@@ -2005,7 +2005,7 @@
                 radial-gradient(ellipse at 50% 50%, rgba(255,255,255,0.05) 0%, transparent 65%);
         }
         .dg-header-band::after {
-            content: '閴侊拷  DAILY  BULLETIN  閴侊拷';
+            content: '✦  DAILY  BULLETIN  ✦';
             position: absolute; top: 17px; left: 0; right: 0;
             text-align: center;
             font-size: 7.5px; letter-spacing: 5px; opacity: 0.3;
@@ -3637,7 +3637,7 @@
         }
 
         .text-tech-container::before {
-            content: '閴侊拷  LOADING  閴侊拷';
+            content: '✦  LOADING  ✦';
             display: block;
             font-size: 8px; letter-spacing: 5px;
             color: rgba(var(--accent-color-rgb), 0.6);
@@ -4898,7 +4898,7 @@
             box-shadow: 0 2px 8px rgba(255, 193, 7, 0.4);
         }
         .batch-favorite-checkbox.checked::after {
-            content: "閴侊拷";
+            content: "✓";
             font-weight: 900;
             color: #fff;
             font-size: 12px;
@@ -5640,7 +5640,7 @@
         }
 
         .ann-header-card::before {
-    content: '閴傘倧绗�';
+    content: '❤︎';
     position: absolute;
     font-size: 80px;
     right: -10px;
@@ -7004,7 +7004,7 @@
     position: relative;
         }
         .custom-tag::after {
-    content: "閳硷拷";
+    content: "●";
     font-size: 10px;
     color: #fff;
     position: absolute;
@@ -8982,7 +8982,7 @@
     box-shadow: 0 1px 5px rgba(var(--accent-color-rgb),0.1);
         }
         .poke-quick-item::before {
-    content: '閴侊拷';
+    content: '✦';
     font-size: 10px;
     color: var(--accent-color);
     opacity: 0.5;
