@@ -1586,6 +1586,13 @@ autoSendSlider.addEventListener('input', (e) => {
     autoSendValue.textContent = `${val}分钟`;
 });
 
+// 松手后才保存并重启定时器：拖动中 input 会连续触发，没必要反复重建。
+// 主动动作共用这条时间线，所以这里重启后两者的节奏一起生效，不用刷新页面。
+autoSendSlider.addEventListener('change', () => {
+    throttledSaveData();
+    manageAutoSendTimer();
+});
+
 const combineCardsToggle  = document.getElementById('combine-cards-toggle');
 const combineCardsControl = document.getElementById('combine-cards-control');
 const combineCardsSlider  = document.getElementById('combine-cards-slider');
