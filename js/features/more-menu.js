@@ -81,7 +81,8 @@
         // 加回"位置"和"快问快答"这两个（凑够6个，两行各3个/4个，看起来不那么空），
         // 小红书/抖音还是先不加，功能都没做
         { id: 'location', iconClass: 'fas fa-location-dot', label: '位置', ready: false },
-        { id: 'qa', iconClass: 'fas fa-comments', label: '快问快答', ready: false }
+        { id: 'qa', iconClass: 'fas fa-comments', label: '快问快答', ready: false },
+        { id: 'actions', iconClass: 'fas fa-hand-holding-heart', label: '动作', ready: false }
         // { id: 'xiaohongshu', iconClass: 'fas fa-book', label: '小红书', ready: false },
         // { id: 'douyin', iconClass: 'fab fa-tiktok', label: '抖音', ready: false }
     ];
