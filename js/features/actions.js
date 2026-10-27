@@ -23,10 +23,10 @@
     var DEFAULT_ACTIONS = [
         { id: 'a1', name: '拥抱', icon: '🫂', type: 'mutual',
           desc: '{partner}紧紧抱住你，下巴抵在你头顶',
-          meDesc: '你紧紧抱住{partner}，把脸埋在他胸口', chainTo: 'a10' },
+          meDesc: '你紧紧抱住{partner}，把脸埋在他胸口' },
         { id: 'a2', name: '亲吻', icon: '💋', type: 'mutual',
           desc: '{partner}低头吻住你，温柔而霸道',
-          meDesc: '你踮起脚尖吻住{partner}，他愣了一下随即加深', chainTo: 'a5' },
+          meDesc: '你踮起脚尖吻住{partner}，他愣了一下随即加深' },
         { id: 'a3', name: '摸头', icon: '🤚', type: 'other',
           desc: '{partner}揉了揉你的头发，眼底带笑',
           meDesc: '你伸手揉了揉{partner}的头发，被他捉住手腕' },
@@ -35,10 +35,10 @@
           meDesc: '你主动握住{partner}的手，他收紧手指' },
         { id: 'a5', name: '壁咚', icon: '🧱', type: 'other',
           desc: '{partner}将你困在臂弯里，气息逼近',
-          meDesc: '你将{partner}推到墙上，他挑眉看你', chainTo: 'a13' },
+          meDesc: '你将{partner}推到墙上，他挑眉看你' },
         { id: 'a6', name: '投喂', icon: '🍰', type: 'other',
           desc: '{partner}将甜品递到你嘴边，"张嘴"',
-          meDesc: '你把甜品递到{partner}嘴边，他张口咬住你的手指', chainTo: 'a2' },
+          meDesc: '你把甜品递到{partner}嘴边，他张口咬住你的手指' },
         { id: 'a7', name: '捏脸', icon: '🤏', type: 'other',
           desc: '{partner}捏了捏你的脸，"软软的"',
           meDesc: '你捏了捏{partner}的脸，被他轻轻咬了一口' },
@@ -50,7 +50,7 @@
           meDesc: '你挠了挠{partner}的下巴，他喉结动了动' },
         { id: 'a10', name: '背后抱', icon: '🫂', type: 'other',
           desc: '{partner}从背后环住你，用唇蹭了蹭你的脖子',
-          meDesc: '你从背后环住{partner}，他握住你交叠的手', chainTo: 'a14' },
+          meDesc: '你从背后环住{partner}，他握住你交叠的手' },
         { id: 'a11', name: '额头吻', icon: '💋', type: 'other',
           desc: '{partner}在你额头落下一吻，很轻',
           meDesc: '你在{partner}额头落下一吻，他闭了闭眼，笑了' },
@@ -149,6 +149,15 @@
             customActions = raw ? (JSON.parse(raw) || []) : [];
         } catch (e) { customActions = []; }
         if (!Array.isArray(customActions)) customActions = [];
+        // 连锁动作功能已移除：清掉历史数据里残留的 chainTo 字段（并落盘）
+        var cleanedCustom = false;
+        for (var ci = 0; ci < customActions.length; ci++) {
+            if (customActions[ci] && 'chainTo' in customActions[ci]) {
+                delete customActions[ci].chainTo;
+                cleanedCustom = true;
+            }
+        }
+        if (cleanedCustom) saveStore();
         try {
             var r2 = localStorage.getItem(REPLY_KEY);
             customReplies = r2 ? JSON.parse(r2) : null;
@@ -164,6 +173,15 @@
             actionOverrides = r4 ? (JSON.parse(r4) || {}) : {};
         } catch (e) { actionOverrides = {}; }
         if (!actionOverrides || typeof actionOverrides !== 'object') actionOverrides = {};
+        var cleanedOv = false;
+        for (var ok in actionOverrides) {
+            if (Object.prototype.hasOwnProperty.call(actionOverrides, ok) && actionOverrides[ok]
+                && 'chainTo' in actionOverrides[ok]) {
+                delete actionOverrides[ok].chainTo;
+                cleanedOv = true;
+            }
+        }
+        if (cleanedOv) saveOverrides();
         try {
             var r5 = localStorage.getItem(HIDDEN_KEY);
             hiddenBuiltins = r5 ? (JSON.parse(r5) || {}) : {};
@@ -189,7 +207,7 @@
             if (match && !actionOverrides[match.id]) {
                 actionOverrides[match.id] = {
                     name: a.name, icon: a.icon, type: a.type,
-                    desc: a.desc, meDesc: a.meDesc, chainTo: a.chainTo || ''
+                    desc: a.desc, meDesc: a.meDesc
                 };
                 changed = true;
             } else {
@@ -436,17 +454,7 @@
         closePanel();
         pushSystem('💝 ' + text);
 
-        var chainDelay = 0;
-        var exclude = [a.id];
-        if (a.chainTo) {
-            var chain = findAction(a.chainTo);
-            if (chain) {
-                chainDelay = 2400 + Math.random() * 2200;
-                exclude.push(chain.id);
-                setTimeout(function () { pushSystem('💝 ' + fill(chain.desc)); }, chainDelay);
-            }
-        }
-        scheduleActionReply(chainDelay, { exclude: exclude });
+        scheduleActionReply(0, { exclude: [a.id] });
         persist();
     }
 
@@ -568,11 +576,7 @@
                     var tags = '';
                     if (hidden) tags += '<span class="mc-tag off">已隐藏</span>';
                     if (edited) tags += '<span class="mc-tag">已改</span>';
-                    if (a.chainTo) {
-                        var c = findAction(a.chainTo);
-                        if (c) tags += '<span class="mc-tag">🔗' + esc(c.name) + '</span>';
-                    }
-                    var ops = '<button type="button" class="mc-mini-btn" data-act="edit" data-id="' + esc(a.id) + '">编辑</button>';
+                    var ops ='<button type="button" class="mc-mini-btn" data-act="edit" data-id="' + esc(a.id) + '">编辑</button>';
                     if (builtin) {
                         ops += hidden
                             ? '<button type="button" class="mc-mini-btn" data-act="show" data-id="' + esc(a.id) + '">显示</button>'
@@ -597,19 +601,6 @@
         body.innerHTML = html;
     }
 
-    /* 连锁动作下拉：不能选自己，避免自己接自己 */
-    function chainOptions(selected, selfId) {
-        var html = '<option value="">（无）</option>';
-        var all = allActions();
-        for (var i = 0; i < all.length; i++) {
-            if (all[i].id === selfId) continue;
-            html += '<option value="' + esc(all[i].id) + '"' +
-                (selected === all[i].id ? ' selected' : '') + '>' +
-                esc((all[i].icon || '') + ' ' + all[i].name) + '</option>';
-        }
-        return html;
-    }
-
     function renderForm(body, a) {
         var isEdit = !!a;
         var opts = ACTION_TYPES.map(function (t) {
@@ -626,9 +617,6 @@
                 '<label>类型<select id="mcActType">' + opts + '</select></label>' +
                 '<label>他视角描述<textarea id="mcActDesc" placeholder="' + esc(partnerName()) + '揉了揉你的头发">' + esc(a ? a.desc : '') + '</textarea></label>' +
                 '<label>我视角描述<textarea id="mcActMe" placeholder="你伸手揉了揉' + esc(partnerName()) + '的头发">' + esc(a ? a.meDesc : '') + '</textarea></label>' +
-                '<label>连锁到（做完这个后自动接上，可留空）' +
-                    '<select id="mcActChain">' + chainOptions(a ? a.chainTo : '', a ? a.id : '') + '</select>' +
-                '</label>' +
                 (isEdit && isBuiltin(a.id)
                     ? '<div class="mc-hint">这是内置动作，保存后直接替换原内容，不会多出一条。</div>' : '') +
                 '<button type="button" class="mc-primary-btn" data-act="' + (isEdit ? 'do-save' : 'do-add') + '">' +
@@ -764,8 +752,7 @@
             icon: (icon || '').trim() || '💫',
             type: type || 'mutual',
             desc: desc.trim(),
-            meDesc: (meDesc || '').trim() || desc.trim(),
-            chainTo: ((el('mcActChain') || {}).value) || ''
+            meDesc: (meDesc || '').trim() || desc.trim()
         });
         saveStore();
         persist();
@@ -789,8 +776,6 @@
         var desc = (el('mcActDesc') || {}).value;
         var meDesc = (el('mcActMe') || {}).value;
 
-        var chainTo = (el('mcActChain') || {}).value || '';
-
         if (isBuiltin(editingId)) {
             // 内置动作：不另存副本，直接在原条目上覆盖
             actionOverrides[editingId] = {
@@ -798,8 +783,7 @@
                 icon: (icon || '').trim() || a.icon,
                 type: type || a.type,
                 desc: (desc || '').trim() || a.desc,
-                meDesc: (meDesc || '').trim() || (a.meDesc || ''),
-                chainTo: chainTo
+                meDesc: (meDesc || '').trim() || (a.meDesc || '')
             };
             saveOverrides();
             persist();
@@ -812,7 +796,6 @@
                     customActions[i].type = type || customActions[i].type;
                     customActions[i].desc = (desc || '').trim() || customActions[i].desc;
                     customActions[i].meDesc = (meDesc || '').trim() || customActions[i].meDesc;
-                    customActions[i].chainTo = chainTo;
                     break;
                 }
             }
