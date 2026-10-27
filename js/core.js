@@ -1057,7 +1057,10 @@ function manageAutoSendTimer() {
         
         autoSendTimer = setInterval(() => {
             if (!document.body.classList.contains('batch-favorite-mode')) {
-                simulateReply(); 
+                // 动作模块可以接管这次心跳：返回 true 表示这次改发动作（它自己会补一句话），
+                // 这里就不再发普通消息。主动动作因此没有独立定时器，跟主动发送共用一条时间线。
+                if (typeof window._onAutoSendTick === 'function' && window._onAutoSendTick() === true) return;
+                simulateReply();
             }
         }, intervalMs);
     }
@@ -1208,7 +1211,7 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
 
     if (msg.type === 'system') {
         const systemMsgDiv = document.createElement('div');
-        systemMsgDiv.className = 'system-message';
+        systemMsgDiv.className = 'system-message' + (msg.actionMsg ? ' system-message-action' : '');
         systemMsgDiv.dataset.msgId = msg.id; // 让"跳转到某条消息"能定位到拍一拍这类系统消息
         systemMsgDiv.innerHTML = msg.text;
         fragment.appendChild(systemMsgDiv);
