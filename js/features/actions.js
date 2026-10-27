@@ -16,6 +16,8 @@
     var STORE_KEY = 'milkchat_custom_actions_v1';
     var REPLY_KEY = 'milkchat_action_replies_v1';
     var SET_KEY   = 'milkchat_action_settings_v1';
+    var OVERRIDE_KEY = 'milkchat_action_overrides_v1';  // 内置动作的改动：{ 内置id: {字段:值} }
+    var HIDDEN_KEY   = 'milkchat_action_hidden_v1';     // 被隐藏的内置动作：{ 内置id: true }
 
     /* ---------- 内置动作库（{partner}=对方名字，{me}=我的名字）---------- */
     var DEFAULT_ACTIONS = [
@@ -109,6 +111,8 @@
     var proactiveTimer = null;
 
     var customActions = [];
+    var actionOverrides = {};      // 内置动作被改过的字段
+    var hiddenBuiltins = {};       // 被隐藏的内置动作
     var customReplies = null;      // null 表示用户没自定义，用内置池
     var currentMode = 'me';        // 'me' | 'other'
     var currentView = 'grid';      // 'grid' | 'list' | 'add' | 'edit' | 'replies' | 'settings'
@@ -155,6 +159,54 @@
             actSettings = r3 ? (JSON.parse(r3) || null) : null;
         } catch (e) { actSettings = null; }
         actSettings = mergeSettings(actSettings);
+        try {
+            var r4 = localStorage.getItem(OVERRIDE_KEY);
+            actionOverrides = r4 ? (JSON.parse(r4) || {}) : {};
+        } catch (e) { actionOverrides = {}; }
+        if (!actionOverrides || typeof actionOverrides !== 'object') actionOverrides = {};
+        try {
+            var r5 = localStorage.getItem(HIDDEN_KEY);
+            hiddenBuiltins = r5 ? (JSON.parse(r5) || {}) : {};
+        } catch (e) { hiddenBuiltins = {}; }
+        if (!hiddenBuiltins || typeof hiddenBuiltins !== 'object') hiddenBuiltins = {};
+
+        migrateLegacyCopies();
+    }
+
+    /* 旧版本编辑内置动作会"另存为副本"，导致列表里出现同名重复。
+       这里把那些副本回收成真正的覆盖记录，用户之前改的内容不丢。 */
+    function migrateLegacyCopies() {
+        if (!customActions.length) return;
+        var changed = false;
+        var keep = [];
+        for (var i = 0; i < customActions.length; i++) {
+            var a = customActions[i];
+            var match = null;
+            for (var j = 0; j < DEFAULT_ACTIONS.length; j++) {
+                if (DEFAULT_ACTIONS[j].name === a.name) { match = DEFAULT_ACTIONS[j]; break; }
+            }
+            // 只回收"和内置动作同名"、且该内置动作还没被覆盖过的副本
+            if (match && !actionOverrides[match.id]) {
+                actionOverrides[match.id] = {
+                    name: a.name, icon: a.icon, type: a.type,
+                    desc: a.desc, meDesc: a.meDesc, chainTo: a.chainTo || ''
+                };
+                changed = true;
+            } else {
+                keep.push(a);
+            }
+        }
+        if (changed) {
+            customActions = keep;
+            saveStore();
+            saveOverrides();
+        }
+    }
+    function saveOverrides() {
+        try { localStorage.setItem(OVERRIDE_KEY, JSON.stringify(actionOverrides)); } catch (e) {}
+    }
+    function saveHidden() {
+        try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(hiddenBuiltins)); } catch (e) {}
     }
     function mergeSettings(s) {
         var out = {
@@ -192,7 +244,28 @@
         } catch (e) {}
     }
 
-    function allActions() { return DEFAULT_ACTIONS.concat(customActions); }
+    /* 内置动作：套用覆盖记录。includeHidden=true 时连隐藏的也列出（管理页要用） */
+    function builtinRows(includeHidden) {
+        var out = [];
+        for (var i = 0; i < DEFAULT_ACTIONS.length; i++) {
+            var a = DEFAULT_ACTIONS[i];
+            if (!includeHidden && hiddenBuiltins[a.id]) continue;
+            var ov = actionOverrides[a.id];
+            if (!ov) { out.push(a); continue; }
+            var merged = {};
+            var k;
+            for (k in a) { if (Object.prototype.hasOwnProperty.call(a, k)) merged[k] = a[k]; }
+            for (k in ov) { if (Object.prototype.hasOwnProperty.call(ov, k)) merged[k] = ov[k]; }
+            out.push(merged);
+        }
+        return out;
+    }
+    /* 可见动作 = 内置（套用覆盖、剔除隐藏）+ 自定义 */
+    function allActions() { return builtinRows(false).concat(customActions); }
+    /* 管理页列表：隐藏的也要列出来，否则没法放回来 */
+    function allRows() { return builtinRows(true).concat(customActions); }
+    function isOverridden(id) { return !!actionOverrides[id]; }
+    function isHidden(id) { return !!hiddenBuiltins[id]; }
     function findAction(id) {
         var all = allActions();
         for (var i = 0; i < all.length; i++) { if (all[i].id === id) return all[i]; }
@@ -425,6 +498,9 @@
             case 'do-save':  saveEditAction(); break;
             case 'edit':     startEdit(act.getAttribute('data-id')); break;
             case 'del':      removeCustomAction(act.getAttribute('data-id')); break;
+            case 'hide':     hideAction(act.getAttribute('data-id')); break;
+            case 'show':     showAction(act.getAttribute('data-id')); break;
+            case 'reset-one': resetBuiltin(act.getAttribute('data-id')); break;
             case 'replies':  currentView = 'replies'; render(); break;
             case 'do-save-rep': saveReplies(); toast('话术已保存'); break;
             case 'reset-rep': resetReplies(); break;
@@ -476,7 +552,7 @@
     }
 
     function renderList(body) {
-        var all = allActions();
+        var all = allRows();
         var html =
             '<div class="mc-mode-row">' +
                 '<button type="button" class="mc-mini-btn" data-act="back">← 返回</button>' +
@@ -487,21 +563,51 @@
             '<div class="mc-list">' +
                 all.map(function (a) {
                     var builtin = isBuiltin(a.id);
-                    return '<div class="mc-list-item">' +
+                    var hidden = builtin && isHidden(a.id);
+                    var edited = builtin && isOverridden(a.id);
+                    var tags = '';
+                    if (hidden) tags += '<span class="mc-tag off">已隐藏</span>';
+                    if (edited) tags += '<span class="mc-tag">已改</span>';
+                    if (a.chainTo) {
+                        var c = findAction(a.chainTo);
+                        if (c) tags += '<span class="mc-tag">🔗' + esc(c.name) + '</span>';
+                    }
+                    var ops = '<button type="button" class="mc-mini-btn" data-act="edit" data-id="' + esc(a.id) + '">编辑</button>';
+                    if (builtin) {
+                        ops += hidden
+                            ? '<button type="button" class="mc-mini-btn" data-act="show" data-id="' + esc(a.id) + '">显示</button>'
+                            : '<button type="button" class="mc-mini-btn" data-act="hide" data-id="' + esc(a.id) + '">隐藏</button>';
+                        if (edited || hidden) {
+                            ops += '<button type="button" class="mc-mini-btn" data-act="reset-one" data-id="' + esc(a.id) + '">还原</button>';
+                        }
+                    } else {
+                        ops += '<button type="button" class="mc-mini-btn danger" data-act="del" data-id="' + esc(a.id) + '">删除</button>';
+                    }
+                    return '<div class="mc-list-item' + (hidden ? ' is-hidden' : '') + '">' +
                         '<div class="mc-list-main">' +
                             '<div class="mc-list-name">' + esc(a.icon || '💫') + ' ' + esc(a.name) +
-                                ' <span class="mc-list-type">(' + esc(typeLabel(a.type)) + ')</span></div>' +
+                                ' <span class="mc-list-type">(' + esc(typeLabel(a.type)) + ')</span>' + tags + '</div>' +
                             '<div class="mc-list-desc">他：' + esc(fill(a.desc)) + '</div>' +
                             (a.meDesc ? '<div class="mc-list-desc">我：' + esc(fill(a.meDesc)) + '</div>' : '') +
                         '</div>' +
-                        '<div class="mc-list-ops">' +
-                            '<button type="button" class="mc-mini-btn" data-act="edit" data-id="' + esc(a.id) + '">编辑</button>' +
-                            (builtin ? '' : '<button type="button" class="mc-mini-btn danger" data-act="del" data-id="' + esc(a.id) + '">删除</button>') +
-                        '</div>' +
+                        '<div class="mc-list-ops">' + ops + '</div>' +
                     '</div>';
                 }).join('') +
             '</div>';
         body.innerHTML = html;
+    }
+
+    /* 连锁动作下拉：不能选自己，避免自己接自己 */
+    function chainOptions(selected, selfId) {
+        var html = '<option value="">（无）</option>';
+        var all = allActions();
+        for (var i = 0; i < all.length; i++) {
+            if (all[i].id === selfId) continue;
+            html += '<option value="' + esc(all[i].id) + '"' +
+                (selected === all[i].id ? ' selected' : '') + '>' +
+                esc((all[i].icon || '') + ' ' + all[i].name) + '</option>';
+        }
+        return html;
     }
 
     function renderForm(body, a) {
@@ -520,6 +626,11 @@
                 '<label>类型<select id="mcActType">' + opts + '</select></label>' +
                 '<label>他视角描述<textarea id="mcActDesc" placeholder="' + esc(partnerName()) + '揉了揉你的头发">' + esc(a ? a.desc : '') + '</textarea></label>' +
                 '<label>我视角描述<textarea id="mcActMe" placeholder="你伸手揉了揉' + esc(partnerName()) + '的头发">' + esc(a ? a.meDesc : '') + '</textarea></label>' +
+                '<label>连锁到（做完这个后自动接上，可留空）' +
+                    '<select id="mcActChain">' + chainOptions(a ? a.chainTo : '', a ? a.id : '') + '</select>' +
+                '</label>' +
+                (isEdit && isBuiltin(a.id)
+                    ? '<div class="mc-hint">这是内置动作，保存后直接替换原内容，不会多出一条。</div>' : '') +
                 '<button type="button" class="mc-primary-btn" data-act="' + (isEdit ? 'do-save' : 'do-add') + '">' +
                     (isEdit ? '保存修改' : '添加动作') + '</button>' +
             '</div>';
@@ -648,12 +759,13 @@
         var meDesc = (el('mcActMe') || {}).value;
         if (!name || !name.trim() || !desc || !desc.trim()) { toast('请填写名称和他视角描述'); return; }
         customActions.push({
-            id: 'ca_' + Date.now(),
+            id: 'ca_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
             name: name.trim(),
             icon: (icon || '').trim() || '💫',
             type: type || 'mutual',
             desc: desc.trim(),
-            meDesc: (meDesc || '').trim() || desc.trim()
+            meDesc: (meDesc || '').trim() || desc.trim(),
+            chainTo: ((el('mcActChain') || {}).value) || ''
         });
         saveStore();
         persist();
@@ -677,19 +789,21 @@
         var desc = (el('mcActDesc') || {}).value;
         var meDesc = (el('mcActMe') || {}).value;
 
+        var chainTo = (el('mcActChain') || {}).value || '';
+
         if (isBuiltin(editingId)) {
-            // 内置动作不可改，复制成自定义副本
-            customActions.push({
-                id: 'ca_' + Date.now(),
+            // 内置动作：不另存副本，直接在原条目上覆盖
+            actionOverrides[editingId] = {
                 name: (name || '').trim() || a.name,
                 icon: (icon || '').trim() || a.icon,
                 type: type || a.type,
                 desc: (desc || '').trim() || a.desc,
-                meDesc: (meDesc || '').trim() || (a.meDesc || '')
-            });
-            saveStore();
+                meDesc: (meDesc || '').trim() || (a.meDesc || ''),
+                chainTo: chainTo
+            };
+            saveOverrides();
             persist();
-            toast('内置动作已复制为自定义');
+            toast('内置动作已更新');
         } else {
             for (var i = 0; i < customActions.length; i++) {
                 if (customActions[i].id === editingId) {
@@ -698,6 +812,7 @@
                     customActions[i].type = type || customActions[i].type;
                     customActions[i].desc = (desc || '').trim() || customActions[i].desc;
                     customActions[i].meDesc = (meDesc || '').trim() || customActions[i].meDesc;
+                    customActions[i].chainTo = chainTo;
                     break;
                 }
             }
@@ -709,8 +824,36 @@
         render();
     }
 
+    /* 内置动作不真删，改成"隐藏"——随时能放回来 */
+    function hideAction(id) {
+        if (!isBuiltin(id)) { removeCustomAction(id); return; }
+        hiddenBuiltins[id] = true;
+        saveHidden();
+        persist();
+        toast('已隐藏');
+        render();
+    }
+    function showAction(id) {
+        delete hiddenBuiltins[id];
+        saveHidden();
+        persist();
+        toast('已恢复显示');
+        render();
+    }
+    /* 把内置动作改回出厂文案 */
+    function resetBuiltin(id) {
+        if (!isBuiltin(id)) return;
+        delete actionOverrides[id];
+        delete hiddenBuiltins[id];
+        saveOverrides();
+        saveHidden();
+        persist();
+        toast('已恢复内置原始内容');
+        render();
+    }
+
     function removeCustomAction(id) {
-        if (isBuiltin(id)) { toast('内置动作不能删除'); return; }
+        if (isBuiltin(id)) { toast('内置动作请点「隐藏」'); return; }
         customActions = customActions.filter(function (a) { return a.id !== id; });
         saveStore();
         persist();
