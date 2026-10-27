@@ -5,7 +5,7 @@
    · 动作库：16 个内置动作 + 自定义动作（localStorage）
    · 动作面板：我发起 / 他 发起 / 随机 / 管理
    · 动作消息：居中系统消息（复用 MILK-CHAT 的 .system-message）
-   · 动作回应：专属话术池抽一条，由对方回出
+   · 动作回应：按概率回动作，可连击最多 MAX_REPLY_ACTIONS 个；说的话来自「回复库 · 主字卡」
    ------------------------------------------------------------
    接入协议：window.MoreMenu.registerItem('actions', { ready, action })
    不依赖任何外部库，不改动 js/core.js
@@ -14,7 +14,6 @@
     'use strict';
 
     var STORE_KEY = 'milkchat_custom_actions_v1';
-    var REPLY_KEY = 'milkchat_action_replies_v1';
     var SET_KEY   = 'milkchat_action_settings_v1';
     var OVERRIDE_KEY = 'milkchat_action_overrides_v1';  // 内置动作的改动：{ 内置id: {字段:值} }
     var HIDDEN_KEY   = 'milkchat_action_hidden_v1';     // 被隐藏的内置动作：{ 内置id: true }
@@ -71,51 +70,32 @@
           meDesc: '你轻拍{partner}的背，他把你搂得更紧' }
     ];
 
-    /* ---------- 内置「动作回应」话术池 ---------- */
-    var DEFAULT_REPLIES = [
-        '……突然这么主动，我会当真的。',
-        '这种时候，你应该看着我说话。',
-        '记住了，是你先靠近的。',
-        '手这么凉，我帮你暖。',
-        '别动，让我抱一会儿。',
-        '你知不知道，你这样很犯规。',
-        '再靠近一点，我不介意。',
-        '……呼吸乱了，都是因为你。',
-        '我数到三，你要负责到底。',
-        '安静点，让我听听你的心跳。',
-        '这种事，你只能对我做。',
-        '嗯，我记住这个温度了。',
-        '你再这样，我今天就不打算放开你了。',
-        '……想逃？已经晚了。',
-        '我的耐心，只对你有用。',
-        '别说话，让我感受一下。'
-    ];
-
     var ACTION_TYPES = [
         { value: 'mutual', label: '双向' },
         { value: 'other', label: '他发起' },
         { value: 'me', label: '我发起' }
     ];
 
-    /* 回应设置：他是否随机回一个动作、命中概率、回完动作后是否再说话 */
+    /* 回应设置：所有开关都固定为「开」，只保留概率这一项可调。
+       理由：这些项关掉之后他就变哑巴/变木头，没有实际意义，不值得占一个界面控件。 */
     var DEFAULT_SETTINGS = {
-        replyAction: true,         // 开启「他随机回动作」
-        replyChance: 50,           // 命中概率（%）
-        textAfterAction: true,     // 回完动作后再补一句回应话术
-        replySource: 'phrase',     // 他说的话从哪来：'phrase'=动作话术池 / 'card'=主字卡
-        proactiveEnabled: true,    // 开启「他主动做动作」
-        proactiveInterval: 30,     // 主动动作间隔（分钟）
-        proactiveText: true        // 主动动作后是否再补一句话
+        replyChance: 50            // 每一轮掷的概率（%），第 1、2、3 个动作各掷一次，互不影响
     };
+
+    /* 一次回应里他最多连出几个动作（含第一个）。到上限后收尾补一句话。 */
+    var MAX_REPLY_ACTIONS = 3;
+
+    /* 主动动作和「主动发送」共用一条时间线：core.js 每次要自动发消息前先问这里一句，
+       掷中这个概率就改发动作（动作之后照常补一句话），没掷中就交还给 core.js 正常发消息。
+       所以主动动作没有自己的定时器 —— 开关、间隔都由「聊天设置 → 主动发送」那一个滑块控制。 */
+    var PROACTIVE_ACTION_CHANCE = 33;   // 每次心跳有多大概率是动作（%）
     var actSettings = null;
-    var proactiveTimer = null;
 
     var customActions = [];
     var actionOverrides = {};      // 内置动作被改过的字段
     var hiddenBuiltins = {};       // 被隐藏的内置动作
-    var customReplies = null;      // null 表示用户没自定义，用内置池
     var currentMode = 'me';        // 'me' | 'other'
-    var currentView = 'grid';      // 'grid' | 'list' | 'add' | 'edit' | 'replies' | 'settings'
+    var currentView = 'grid';      // 'grid' | 'list' | 'add' | 'edit' | 'settings'
     var editingId = null;
 
     /* ---------- 工具 ---------- */
@@ -158,11 +138,8 @@
             }
         }
         if (cleanedCustom) saveStore();
-        try {
-            var r2 = localStorage.getItem(REPLY_KEY);
-            customReplies = r2 ? JSON.parse(r2) : null;
-        } catch (e) { customReplies = null; }
-        if (customReplies !== null && !Array.isArray(customReplies)) customReplies = null;
+        // 「回话术」功能已移除：清掉遗留的自定义话术数据，避免白占 localStorage 配额
+        try { localStorage.removeItem('milkchat_action_replies_v1'); } catch (e) {}
         try {
             var r3 = localStorage.getItem(SET_KEY);
             actSettings = r3 ? (JSON.parse(r3) || null) : null;
@@ -228,24 +205,11 @@
     }
     function mergeSettings(s) {
         var out = {
-            replyAction: DEFAULT_SETTINGS.replyAction,
-            replyChance: DEFAULT_SETTINGS.replyChance,
-            textAfterAction: DEFAULT_SETTINGS.textAfterAction,
-            replySource: DEFAULT_SETTINGS.replySource,
-            proactiveEnabled: DEFAULT_SETTINGS.proactiveEnabled,
-            proactiveInterval: DEFAULT_SETTINGS.proactiveInterval,
-            proactiveText: DEFAULT_SETTINGS.proactiveText
+            replyChance: DEFAULT_SETTINGS.replyChance
         };
         if (s && typeof s === 'object') {
-            if (typeof s.replyAction === 'boolean') out.replyAction = s.replyAction;
             var n = Number(s.replyChance);
             if (!isNaN(n)) out.replyChance = Math.max(0, Math.min(100, Math.round(n)));
-            if (typeof s.textAfterAction === 'boolean') out.textAfterAction = s.textAfterAction;
-            if (s.replySource === 'card' || s.replySource === 'phrase') out.replySource = s.replySource;
-            if (typeof s.proactiveEnabled === 'boolean') out.proactiveEnabled = s.proactiveEnabled;
-            var m = Number(s.proactiveInterval);
-            if (!isNaN(m)) out.proactiveInterval = Math.max(1, Math.min(720, Math.round(m)));
-            if (typeof s.proactiveText === 'boolean') out.proactiveText = s.proactiveText;
         }
         return out;
     }
@@ -255,13 +219,6 @@
     function saveStore() {
         try { localStorage.setItem(STORE_KEY, JSON.stringify(customActions)); } catch (e) {}
     }
-    function saveReplies() {
-        try {
-            if (customReplies === null) localStorage.removeItem(REPLY_KEY);
-            else localStorage.setItem(REPLY_KEY, JSON.stringify(customReplies));
-        } catch (e) {}
-    }
-
     /* 内置动作：套用覆盖记录。includeHidden=true 时连隐藏的也列出（管理页要用） */
     function builtinRows(includeHidden) {
         var out = [];
@@ -298,10 +255,19 @@
         return v || '';
     }
 
-    /* ---------- 发消息 ---------- */
+    /* ---------- 发消息 ----------
+       这个模块里所有系统消息都是动作消息，统一打上 actionMsg 标记，
+       渲染时加 .system-message-action（斜体），跟普通系统提示区分开。
+       标记存在消息对象里，刷新后依然生效；文案本身保持纯文本，不塞 HTML。 */
     function pushSystem(text) {
         if (typeof addMessage !== 'function') return null;
-        var msg = { id: Date.now() + Math.random(), text: text, timestamp: new Date(), type: 'system' };
+        var msg = {
+            id: Date.now() + Math.random(),
+            text: text,
+            timestamp: new Date(),
+            type: 'system',
+            actionMsg: true
+        };
         addMessage(msg);
         return msg;
     }
@@ -321,16 +287,10 @@
         if (typeof playSound === 'function') { try { playSound('message'); } catch (e) {} }
     }
 
-    /* ---------- 动作回应：抽一句专属话术 ---------- */
-    function replyPool() {
-        var pool = (customReplies && customReplies.length) ? customReplies : DEFAULT_REPLIES;
-        return pool.filter(function (t) { return t && String(t).trim(); });
-    }
-
     /* ---------- 主字卡池：复用主聊天的「回复库 · 主字卡」----------
-       本模块的 customReplies 遮蔽了全局同名变量，所以走 core.js:630 暴露的
-       window._customReplies。过滤规则照抄 core.js:2660-2675（simulateReply）：
-       排除被单独屏蔽的条目 + 被禁用分组里的条目，跟平时聊天自动回复完全一致。 */
+       走 core.js:630 暴露的 window._customReplies（模块内已无同名变量遮蔽）。
+       过滤规则照抄 core.js:2660-2675（simulateReply）：排除被单独屏蔽的条目 +
+       被禁用分组里的条目，跟平时聊天自动回复完全一致。 */
     function cardPool() {
         var raw = null;
         try {
@@ -380,12 +340,10 @@
         return hit || null;
     }
 
-    /* 让他开口。来源由 replySource 决定：'phrase'=动作话术池，'card'=主字卡。
-       选了字卡但字卡库是空的，自动退回话术池，保证他不会哑巴。 */
+    /* 让他开口：统一从「回复库 · 主字卡」抽一句。
+       字卡库为空时退回主聊天的延迟回复，保证他不会哑巴。 */
     function sayReply() {
-        var st = actSettings || DEFAULT_SETTINGS;
-        var pool = (st.replySource === 'card') ? cardPool() : replyPool();
-        if (!pool.length && st.replySource === 'card') pool = replyPool();
+        var pool = cardPool();
 
         if (pool.length > 0) {
             pushPartner(fill(pool[Math.floor(Math.random() * pool.length)]));
@@ -394,23 +352,30 @@
         }
     }
 
-    /* opts: { exclude: [动作id...] } —— 排除刚出现过的动作，避免自言自语地重复 */
+    /* opts: { exclude: [动作id...], round: 第几轮(0起) } —— exclude 排除刚出现过的动作，避免自言自语地重复。
+       连击：回中动作后若未到 MAX_REPLY_ACTIONS 上限，用同一个 replyChance 再排一轮，接不接由下一轮自己掷。 */
     function scheduleActionReply(extraDelay, opts) {
         opts = opts || {};
         var st = actSettings || DEFAULT_SETTINGS;
+        var round = opts.round || 0;
+        var exclude = opts.exclude || [];
         var base = 2200 + Math.random() * 2600;
         var wait = base + (extraDelay || 0);
-        var wantsAction = !!st.replyAction && Math.random() * 100 < Number(st.replyChance || 0);
+        // 每一轮独立掷一次，概率互不影响：第 1、2、3 个动作各占 replyChance
+        var wantsAction = Math.random() * 100 < Number(st.replyChance || 0);
 
         setTimeout(function () {
             if (wantsAction) {
-                var back = pickReplyAction(opts.exclude);
+                var back = pickReplyAction(exclude);
                 if (back) {
-                    pushSystem('💝 ' + fill(back.desc || back.meDesc || back.name));
-                    if (st.textAfterAction) {
-                        // 动作落地后，再补一句回应话术
-                        setTimeout(function () { sayReply(); }, 2000 + Math.random() * 2200);
+                    pushSystem(fill(back.desc || back.meDesc || back.name));
+                    if ((round + 1) < MAX_REPLY_ACTIONS) {
+                        // 还没到上限：再排一轮，接不接由它自己掷概率
+                        scheduleActionReply(0, { exclude: exclude.concat([back.id]), round: round + 1 });
+                        return;
                     }
+                    // 已到上限：收尾补一句话（来自主字卡）
+                    setTimeout(function () { sayReply(); }, 2000 + Math.random() * 2200);
                     return;
                 }
             }
@@ -418,30 +383,23 @@
         }, wait);
     }
 
-    /* ---------- 他主动做动作（独立于「自动发送」，不碰 core.js） ---------- */
+    /* ---------- 他主动做动作 ----------
+       返回 true = 这次心跳被动作接管（core.js 不再发消息）；false = 交还给 core.js。
+       动作之后照常补一句话，所以他说话的密度不会因为这个心跳做动作而变少。 */
     function fireProactiveAction() {
         var a = pickReplyAction([]);
-        if (!a) return;
-        pushSystem('💝 ' + fill(a.desc || a.meDesc || a.name));
-        if (actSettings && actSettings.proactiveText) {
-            setTimeout(function () { sayReply(); }, 2500 + Math.random() * 2500);
-        }
+        if (!a) return false;      // 没有可用动作，别把这次心跳浪费掉
+        pushSystem(fill(a.desc || a.meDesc || a.name));
+        setTimeout(function () { sayReply(); }, 2500 + Math.random() * 2500);
         persist();
+        return true;
     }
 
-    /* 每次触发后重新排期，间隔带 ±30% 抖动，避免机械感 */
-    function scheduleProactive() {
-        if (proactiveTimer) { clearTimeout(proactiveTimer); proactiveTimer = null; }
-        var st = actSettings || DEFAULT_SETTINGS;
-        if (!st.proactiveEnabled) return;
-        var mins = Math.max(1, Number(st.proactiveInterval) || 30);
-        var ms = mins * 60 * 1000 * (0.7 + Math.random() * 0.6);
-        proactiveTimer = setTimeout(function () {
-            proactiveTimer = null;
-            try { fireProactiveAction(); } catch (e) {}
-            scheduleProactive();
-        }, ms);
-    }
+    /* core.js 的主动发送心跳钩子。返回 true 表示"这次我来"，core.js 就不再调 simulateReply。 */
+    window._onAutoSendTick = function () {
+        if (Math.random() * 100 >= PROACTIVE_ACTION_CHANCE) return false;
+        try { return fireProactiveAction(); } catch (e) { return false; }
+    };
 
     /* ---------- 发送动作 ---------- */
     function sendAction(id, mode) {
@@ -452,7 +410,7 @@
         var text = fill(raw);
 
         closePanel();
-        pushSystem('💝 ' + text);
+        pushSystem(text);
 
         scheduleActionReply(0, { exclude: [a.id] });
         persist();
@@ -509,9 +467,6 @@
             case 'hide':     hideAction(act.getAttribute('data-id')); break;
             case 'show':     showAction(act.getAttribute('data-id')); break;
             case 'reset-one': resetBuiltin(act.getAttribute('data-id')); break;
-            case 'replies':  currentView = 'replies'; render(); break;
-            case 'do-save-rep': saveReplies(); toast('话术已保存'); break;
-            case 'reset-rep': resetReplies(); break;
             case 'settings': currentView = 'settings'; render(); break;
             case 'do-save-set': saveSettingsFromForm(); break;
             case 'reset-set': resetSettings(); break;
@@ -533,7 +488,6 @@
         else if (currentView === 'list') { renderList(body); }
         else if (currentView === 'add') { renderForm(body, null); }
         else if (currentView === 'edit') { renderForm(body, findAction(editingId)); }
-        else if (currentView === 'replies') { renderReplies(body); }
         else if (currentView === 'settings') { renderSettings(body); }
     }
 
@@ -565,8 +519,7 @@
             '<div class="mc-mode-row">' +
                 '<button type="button" class="mc-mini-btn" data-act="back">← 返回</button>' +
                 '<button type="button" class="mc-mini-btn" data-act="add-form">➕ 添加动作</button>' +
-                '<button type="button" class="mc-mini-btn" data-act="replies">💬 回话术</button>' +
-                '<button type="button" class="mc-mini-btn" data-act="settings">🔁 回动作</button>' +
+                '<button type="button" class="mc-mini-btn" data-act="settings">⚙️ 回应设置</button>' +
             '</div>' +
             '<div class="mc-list">' +
                 all.map(function (a) {
@@ -624,27 +577,6 @@
             '</div>';
     }
 
-    function renderReplies(body) {
-        var pool = (customReplies && customReplies.length) ? customReplies : DEFAULT_REPLIES;
-        body.innerHTML =
-            '<div class="mc-mode-row">' +
-                '<button type="button" class="mc-mini-btn" data-act="back">← 返回</button>' +
-                '<span class="mc-view-label">动作回应话术</span>' +
-            '</div>' +
-            '<div class="mc-hint">每行一句。留空则使用内置话术。</div>' +
-            '<textarea id="mcReplyBox" class="mc-reply-box">' + esc(pool.join('\n')) + '</textarea>' +
-            '<div class="mc-form-row">' +
-                '<button type="button" class="mc-primary-btn" data-act="do-save-rep">保存话术</button>' +
-                '<button type="button" class="mc-mini-btn danger" data-act="reset-rep">恢复内置</button>' +
-            '</div>';
-        var box = el('mcReplyBox');
-        if (box) {
-            box.addEventListener('input', function () {
-                customReplies = box.value.split('\n');
-            });
-        }
-    }
-
     function renderSettings(body) {
         var st = actSettings || DEFAULT_SETTINGS;
         body.innerHTML =
@@ -654,39 +586,22 @@
             '</div>' +
             '<div class="mc-hint">① 你发动作后，' + esc(partnerName()) + '怎么回应你</div>' +
             '<div class="mc-form">' +
-                '<label class="mc-check-row">' +
-                    '<input type="checkbox" id="mcSetReplyAction"' + (st.replyAction ? ' checked' : '') + '>' +
-                    '<span>他随机回一个动作</span>' +
-                '</label>' +
                 '<label>回动作的概率（%）' +
                     '<input type="number" id="mcSetChance" min="0" max="100" step="5" value="' + Number(st.replyChance) + '">' +
                 '</label>' +
-                '<label class="mc-check-row">' +
-                    '<input type="checkbox" id="mcSetTextAfter"' + (st.textAfterAction ? ' checked' : '') + '>' +
-                    '<span>回完动作后再说一句话</span>' +
-                '</label>' +
-                '<label>他说的话从哪来' +
-                    '<select id="mcSetSource">' +
-                        '<option value="phrase"' + (st.replySource === 'card' ? '' : ' selected') + '>动作话术池（💬 回话术）</option>' +
-                        '<option value="card"' + (st.replySource === 'card' ? ' selected' : '') + '>主字卡（回复库）</option>' +
-                    '</select>' +
-                '</label>' +
-                '<div class="mc-hint">选「主字卡」时，他用你平时聊天那套回复库说话；字卡库为空会自动退回话术池。</div>' +
+                '<div class="mc-hint">每一轮都独立掷一次、互不影响：' +
+                    '第 1 个动作 ' + Number(st.replyChance) + '%，中了再掷第 2 个也是 ' + Number(st.replyChance) +
+                    '%，再中掷第 3 个还是 ' + Number(st.replyChance) + '%。' +
+                '</div>' +
+                '<div class="mc-hint">一次回应最多连出 ' + MAX_REPLY_ACTIONS + ' 个动作；动作结束后，' +
+                    '他会再说一句话，来自「回复库 · 主字卡」，跟平时聊天的自动回复一致。</div>' +
             '</div>' +
             '<div class="mc-hint mc-sec">② 他自己找上门（主动动作）</div>' +
             '<div class="mc-form">' +
-                '<label class="mc-check-row">' +
-                    '<input type="checkbox" id="mcSetProactive"' + (st.proactiveEnabled ? ' checked' : '') + '>' +
-                    '<span>他会主动做动作</span>' +
-                '</label>' +
-                '<label>间隔（分钟，1~720）' +
-                    '<input type="number" id="mcSetProInterval" min="1" max="720" step="5" value="' + Number(st.proactiveInterval) + '">' +
-                '</label>' +
-                '<label class="mc-check-row">' +
-                    '<input type="checkbox" id="mcSetProText"' + (st.proactiveText ? ' checked' : '') + '>' +
-                    '<span>做完动作后说一句话</span>' +
-                '</label>' +
-                '<div class="mc-hint">不等你开口，他自己过来。间隔带 ±30% 随机抖动。</div>' +
+                '<div class="mc-hint">和「设置 → 聊天设置 → 主动发送」共用一条时间线：' +
+                    '那里的开关关掉就都不来了，间隔也由那里的滑块决定。</div>' +
+                '<div class="mc-hint">每 ' + PROACTIVE_ACTION_CHANCE + '% 的心跳他会做个动作，' +
+                    '动作之后照常说一句话（来自主字卡），所以他说话的密度不变。</div>' +
                 '<div class="mc-form-row">' +
                     '<button type="button" class="mc-mini-btn" data-act="proactive-now">⚡ 立刻来一个</button>' +
                 '</div>' +
@@ -698,33 +613,16 @@
     }
 
     function saveSettingsFromForm() {
-        var on = el('mcSetReplyAction');
         var ch = el('mcSetChance');
-        var ta = el('mcSetTextAfter');
         var n = ch ? Number(ch.value) : NaN;
         if (isNaN(n)) n = DEFAULT_SETTINGS.replyChance;
         n = Math.max(0, Math.min(100, Math.round(n)));
 
-        var src = el('mcSetSource');
-        var pro = el('mcSetProactive');
-        var pi = el('mcSetProInterval');
-        var pt = el('mcSetProText');
-        var m = pi ? Number(pi.value) : NaN;
-        if (isNaN(m)) m = DEFAULT_SETTINGS.proactiveInterval;
-        m = Math.max(1, Math.min(720, Math.round(m)));
-
         actSettings = {
-            replyAction: !!(on && on.checked),
-            replyChance: n,
-            textAfterAction: !!(ta && ta.checked),
-            replySource: (src && src.value === 'card') ? 'card' : 'phrase',
-            proactiveEnabled: !!(pro && pro.checked),
-            proactiveInterval: m,
-            proactiveText: !!(pt && pt.checked)
+            replyChance: n
         };
         saveSettings();
         persist();
-        scheduleProactive();     // 设置变了，重新排期
         toast('回应设置已保存');
         currentView = 'list';
         render();
@@ -733,8 +631,7 @@
     function resetSettings() {
         actSettings = mergeSettings(null);
         saveSettings();
-        scheduleProactive();
-        toast('已恢复默认（回动作 50% / 主动动作 30 分钟 / 说话用话术池）');
+        toast('已恢复默认（回动作 50% / 主动动作 33% / 说话用主字卡）');
         render();
     }
 
@@ -844,13 +741,6 @@
         render();
     }
 
-    function resetReplies() {
-        customReplies = null;
-        saveReplies();
-        toast('已恢复内置话术');
-        render();
-    }
-
     /* ---------- 开关 ---------- */
     function openPanel() {
         ensureDOM();
@@ -873,7 +763,6 @@
         sendAction: sendAction,
         randomAction: randomAction,
         fireProactiveAction: fireProactiveAction,
-        scheduleProactive: scheduleProactive,
         getActions: function () { return allActions(); }
     };
 
@@ -881,6 +770,5 @@
         if (window.MoreMenu && typeof window.MoreMenu.registerItem === 'function') {
             window.MoreMenu.registerItem('actions', { ready: true, action: openPanel });
         }
-        scheduleProactive();
     });
 })();
