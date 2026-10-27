@@ -259,42 +259,6 @@
     margin-top: 10px;
 }
 
-/* ---- 话术编辑 ---- */
-.mc-reply-box {
-    width: 100%;
-    min-height: 150px;
-    font-family: inherit;
-    font-size: 13px;
-    line-height: 1.6;
-    padding: 10px;
-    border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
-    border-radius: 12px;
-    background: var(--primary-bg, #fff);
-    color: var(--text-primary, #333);
-    outline: none;
-    resize: vertical;
-    box-sizing: border-box;
-}
-.mc-reply-box:focus {
-    border-color: var(--accent-color, #b48c64);
-}
-
-.mc-check-row {
-    flex-direction: row !important;
-    align-items: center;
-    gap: 8px !important;
-    font-size: 13px !important;
-    color: var(--text-primary, #333) !important;
-    cursor: pointer;
-}
-.mc-check-row input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    flex: none;
-    padding: 0;
-    accent-color: var(--accent-color, #b48c64);
-    cursor: pointer;
-}
 .mc-form .mc-hint {
     margin-top: 0;
     text-align: left;
@@ -332,4 +296,12 @@
 
 @media (max-width: 360px) {
     .mc-actions-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ---- 聊天里的动作消息 ----
+   去掉 💝 前缀后，靠斜体跟普通系统提示（"对方正在输入"、日期分割之类）区分开。
+   .system-message 的基础样式在 styles.css:1563，这里只叠一层斜体，不覆盖其他属性。 */
+.system-message-action {
+    font-style: italic;
+    letter-spacing: 1px;
 }
