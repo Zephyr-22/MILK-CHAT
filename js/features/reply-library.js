@@ -2049,6 +2049,22 @@ function _makeOverlay() {
     return overlay;
 }
 
+// 「让他挑」：这批字卡不必全留。摇签分两步——先摇出这一次的慷慨程度（45%~72%，通常落在 50%~67%），
+// 再洗牌公平地取前 k 张。落选的那部分什么都不写进库，等于从未输入过：不建名单、不落盘、不留痕迹。
+let _drawChoiceMemory = false;
+function _drawSubset(lines) {
+    let p = 0.5 + Math.random() * 0.1667;
+    p += (Math.random() - 0.5) * 0.1;
+    p = Math.min(0.72, Math.max(0.45, p));
+    const k = Math.round(lines.length * p);
+    const pool = lines.slice();
+    for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp;
+    }
+    return { kept: pool.slice(0, k), missed: lines.length - k };
+}
+
 function _showBatchAddDialog() {
     const ctx = _getGroupCtx();
     const groups = ctx.groups;
@@ -2121,6 +2137,16 @@ function _showBatchAddDialog() {
             </div>` : ''}
         </div>
 
+        ${currentSubTab === 'custom' ? `
+        <div id="ba-draw-row" style="flex-shrink:0;display:flex;align-items:center;gap:9px;margin-top:12px;padding:10px 12px;border-radius:11px;cursor:pointer;border:1.5px solid var(--border-color);background:var(--primary-bg);transition:all .15s;">
+            <span style="font-size:12px;font-weight:700;color:var(--text-secondary);">让他挑<span style="font-weight:400;opacity:.75;margin-left:6px;">他只留下其中一部分</span></span>
+            <span style="margin-left:auto;display:flex;align-items:center;flex-shrink:0;">
+                <span id="ba-draw-switch" style="width:36px;height:20px;border-radius:10px;background:var(--border-color);position:relative;transition:background .15s;">
+                    <span id="ba-draw-knob" style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s;"></span>
+                </span>
+            </span>
+        </div>` : ''}
+
         <div style="flex-shrink:0;padding-top:14px;display:flex;gap:10px;">
             <button id="ba-cancel" style="flex:1;padding:12px;border:1.5px solid var(--border-color);border-radius:13px;background:none;color:var(--text-secondary);font-size:13px;cursor:pointer;font-family:var(--font-family);">取消</button>
             <button id="ba-confirm" style="flex:2;padding:12px;border:none;border-radius:13px;background:var(--accent-color);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--font-family);">添加</button>
@@ -2137,6 +2163,28 @@ function _showBatchAddDialog() {
     });
     ta.addEventListener('focus', e => { e.target.style.borderColor = 'var(--accent-color)'; });
     ta.addEventListener('blur', e => { e.target.style.borderColor = 'var(--border-color)'; });
+
+    // 让他挑：开关状态只活在这次会话里（不落 localStorage，对应「抽完不记录」）
+    const drawRow    = panel.querySelector('#ba-draw-row');
+    const confirmBtn = panel.querySelector('#ba-confirm');
+    let _drawEnabled = _drawChoiceMemory;
+    const applyDrawUI = () => {
+        if (!drawRow) return;
+        const knob = drawRow.querySelector('#ba-draw-knob');
+        const sw   = drawRow.querySelector('#ba-draw-switch');
+        drawRow.style.borderColor = _drawEnabled ? 'var(--accent-color)' : 'var(--border-color)';
+        drawRow.style.background  = _drawEnabled ? 'var(--secondary-bg)' : 'var(--primary-bg)';
+        drawRow.style.color       = _drawEnabled ? 'var(--text-primary)' : 'var(--text-secondary)';
+        if (knob) knob.style.transform = _drawEnabled ? 'translateX(16px)' : 'translateX(0)';
+        if (sw)   sw.style.background = _drawEnabled ? 'var(--accent-color)' : 'var(--border-color)';
+        if (confirmBtn) confirmBtn.textContent = _drawEnabled ? '让他挑' : '添加';
+    };
+    if (drawRow) drawRow.addEventListener('click', () => {
+        _drawEnabled = !_drawEnabled;
+        _drawChoiceMemory = _drawEnabled;
+        applyDrawUI();
+    });
+    applyDrawUI();
 
     const groupToggle = panel.querySelector('#ba-group-toggle');
     const groupDrawer = panel.querySelector('#ba-group-drawer');
@@ -2198,8 +2246,13 @@ function _showBatchAddDialog() {
     panel.querySelector('#ba-cancel').onclick = () => overlay.remove();
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
     panel.querySelector('#ba-confirm').onclick = () => {
-        const lines = ta.value.split('\n').map(l => l.trim()).filter(Boolean);
-        if (!lines.length) { showNotification('请输入内容', 'warning'); return; }
+        const allLines = ta.value.split('\n').map(l => l.trim()).filter(Boolean);
+        if (!allLines.length) { showNotification('请输入内容', 'warning'); return; }
+        // 让他挑：先摇签决定这批里哪些留得下来，落选的连 customReplies 都不进，等于从未输入
+        const draw   = (_drawEnabled && currentSubTab === 'custom') ? _drawSubset(allLines) : null;
+        const lines  = draw ? draw.kept : allLines;
+        const missed = draw ? draw.missed : 0;
+        if (!lines.length) { showNotification('他一条都没留下', 'warning'); overlay.remove(); return; }
         let added = 0, skipped = 0;
         const newItems = [];
         lines.forEach(val => {
@@ -2235,7 +2288,9 @@ function _showBatchAddDialog() {
         renderReplyLibrary();
         const groupHint = _selectedGroupIdx >= 0 && groups?.[_selectedGroupIdx]
             ? `，已加入「${groups[_selectedGroupIdx].name}」` : '';
-        showNotification(`✓ 添加 ${added} 条${skipped ? `，跳过 ${skipped} 条重复` : ''}${groupHint}`, 'success');
+        showNotification(draw
+            ? `他挑走了 ${added} 条，放过了 ${missed} 条${skipped ? `，跳过 ${skipped} 条重复` : ''}${groupHint}`
+            : `✓ 添加 ${added} 条${skipped ? `，跳过 ${skipped} 条重复` : ''}${groupHint}`, 'success');
     };
 }
 
