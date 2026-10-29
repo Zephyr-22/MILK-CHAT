@@ -2065,6 +2065,97 @@ function _drawSubset(lines) {
     return { kept: pool.slice(0, k), missed: lines.length - k };
 }
 
+// 「让他挑」的演出：结果在开演前就摇定了，先让他翻一会儿再公布，演完才写库。
+// 时长复用 settings.replyDelayMin/Max——他回一句话要多久，挑字卡就翻多久，节奏永远同频。
+// 速度按这批的条数反推（1.2~5 张/秒）：条数少就翻得慢，条数多就翻得快，小批量不至于反复循环。
+// 掠过的顺序跟抽签结果无关，留下的那些不会在过程中发亮，悬念留到最后一帧。
+function _playDrawReveal(panel, deck, keptCount, missedCount) {
+    return new Promise(resolve => {
+        const s = settings || {};
+        const a = Number(s.replyDelayMin) > 0 ? Number(s.replyDelayMin) : 3000;
+        const b = Number(s.replyDelayMax) > 0 ? Number(s.replyDelayMax) : 7000;
+        const lo = Math.min(a, b), hi = Math.max(a, b);
+        // 时长跟他的回复节奏同频，但小批量要收敛：几句话翻十几二十秒会来回重复好几遍
+        const dur = Math.min(lo + Math.random() * (hi - lo), Math.max(2500, deck.length * 1500));
+        const CARD_H = 38;
+
+        const shown = deck.slice();
+        for (let i = shown.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const t = shown[i]; shown[i] = shown[j]; shown[j] = t;
+        }
+        const half = shown.length * CARD_H;
+
+        panel.innerHTML = `
+            <div style="flex-shrink:0;font-size:16px;font-weight:700;color:var(--text-primary);margin-bottom:6px;">他在翻看…</div>
+            <div style="flex-shrink:0;font-size:12px;color:var(--text-secondary);margin-bottom:14px;line-height:1.6;">他在决定留下哪一些</div>
+            <div id="ba-stage" style="flex:1;min-height:180px;overflow:hidden;border:1.5px solid var(--border-color);border-radius:13px;background:var(--primary-bg);-webkit-mask-image:linear-gradient(to bottom,transparent,#000 20%,#000 80%,transparent);mask-image:linear-gradient(to bottom,transparent,#000 20%,#000 80%,transparent);">
+                <div id="ba-track" style="padding:12px 14px;will-change:transform;"></div>
+            </div>
+            <div id="ba-result" style="flex:1;min-height:180px;display:none;align-items:center;justify-content:center;text-align:center;white-space:pre-line;font-size:15px;font-weight:700;color:var(--accent-color);line-height:1.8;padding:0 6px;"></div>
+            <div style="flex-shrink:0;padding-top:14px;display:flex;gap:10px;">
+                <button id="ba-draw-cancel" style="flex:1;padding:12px;border:1.5px solid var(--border-color);border-radius:13px;background:none;color:var(--text-secondary);font-size:13px;cursor:pointer;font-family:var(--font-family);">取消</button>
+                <button id="ba-draw-skip" style="flex:2;padding:12px;border:none;border-radius:13px;background:var(--accent-color);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--font-family);">跳过</button>
+            </div>
+        `;
+
+        const track = panel.querySelector('#ba-track');
+        const mk = txt => {
+            const d = document.createElement('div');
+            d.style.cssText = 'height:' + CARD_H + 'px;overflow:hidden;font-size:12.5px;line-height:19px;color:var(--text-primary);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word;';
+            d.textContent = txt;
+            return d;
+        };
+        shown.forEach(t => track.appendChild(mk(t)));
+        shown.forEach(t => track.appendChild(mk(t)));
+
+        const perSec = Math.min(5, Math.max(1.2, shown.length / (dur / 1000)));
+        const speed = perSec * CARD_H;
+        const DECEL = 800;
+        let y = 0, raf = 0, last = 0, start = 0, done = false;
+
+        const finish = () => {
+            if (done) return;
+            done = true;
+            cancelAnimationFrame(raf);
+            const stage = panel.querySelector('#ba-stage');
+            if (stage) { stage.style.transition = 'opacity .35s'; stage.style.opacity = '0'; }
+            setTimeout(() => {
+                if (stage) stage.style.display = 'none';
+                const res = panel.querySelector('#ba-result');
+                if (res) {
+                    res.style.display = 'flex';
+                    res.textContent = keptCount > 0
+                        ? '他挑走了 ' + keptCount + ' 条\n放过了 ' + missedCount + ' 条'
+                        : '他一条都没留下';
+                }
+                setTimeout(() => resolve(true), 1500);
+            }, 360);
+        };
+
+        const frame = now => {
+            if (!start) { start = now; last = now; }
+            const elapsed = now - start;
+            const remain = dur - elapsed;
+            const dt = Math.min(0.05, (now - last) / 1000);
+            last = now;
+            let v = speed;
+            if (remain < DECEL) v = speed * Math.max(0, remain / DECEL);
+            y += v * dt;
+            if (half > 0 && y >= half) y -= half;
+            track.style.transform = 'translateY(' + (-y) + 'px)';
+            if (elapsed >= dur) { finish(); return; }
+            raf = requestAnimationFrame(frame);
+        };
+        raf = requestAnimationFrame(frame);
+
+        const cancelBtn = panel.querySelector('#ba-draw-cancel');
+        if (cancelBtn) cancelBtn.onclick = () => { done = true; cancelAnimationFrame(raf); resolve(false); };
+        const skipBtn = panel.querySelector('#ba-draw-skip');
+        if (skipBtn) skipBtn.onclick = finish;
+    });
+}
+
 function _showBatchAddDialog() {
     const ctx = _getGroupCtx();
     const groups = ctx.groups;
@@ -2168,6 +2259,7 @@ function _showBatchAddDialog() {
     const drawRow    = panel.querySelector('#ba-draw-row');
     const confirmBtn = panel.querySelector('#ba-confirm');
     let _drawEnabled = _drawChoiceMemory;
+    let _drawBusy = false;
     const applyDrawUI = () => {
         if (!drawRow) return;
         const knob = drawRow.querySelector('#ba-draw-knob');
@@ -2244,15 +2336,21 @@ function _showBatchAddDialog() {
     }
 
     panel.querySelector('#ba-cancel').onclick = () => overlay.remove();
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-    panel.querySelector('#ba-confirm').onclick = () => {
+    overlay.addEventListener('click', e => { if (e.target === overlay && !_drawBusy) overlay.remove(); });
+    panel.querySelector('#ba-confirm').onclick = async () => {
         const allLines = ta.value.split('\n').map(l => l.trim()).filter(Boolean);
         if (!allLines.length) { showNotification('请输入内容', 'warning'); return; }
         // 让他挑：先摇签决定这批里哪些留得下来，落选的连 customReplies 都不进，等于从未输入
         const draw   = (_drawEnabled && currentSubTab === 'custom') ? _drawSubset(allLines) : null;
         const lines  = draw ? draw.kept : allLines;
         const missed = draw ? draw.missed : 0;
-        if (!lines.length) { showNotification('他一条都没留下', 'warning'); overlay.remove(); return; }
+        if (draw) {
+            // 结果已定，先让他翻一会儿。演出期间不碰库，中途退出等于这次没挑
+            _drawBusy = true;
+            const go = await _playDrawReveal(panel, allLines, lines.length, missed);
+            if (!go) { overlay.remove(); return; }
+            if (!lines.length) { showNotification('他一条都没留下', 'warning'); overlay.remove(); return; }
+        }
         let added = 0, skipped = 0;
         const newItems = [];
         lines.forEach(val => {
