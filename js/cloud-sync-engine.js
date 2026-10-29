@@ -122,7 +122,12 @@
         'pokeSym_my_custom', 'pokeSym_partner_custom',
         'disabledStickerItems',
         'dg_custom_data', 'dg_status_pool', 'weekly_fortune', 'daily_fortune',
-        'voiceTtsConfig'
+        'voiceTtsConfig',
+        // 动作模块（js/features/actions.js）
+        'milkchat_custom_actions_v1',    // 自定义动作
+        'milkchat_action_settings_v1',   // 动作设置
+        'milkchat_action_overrides_v1',  // 内置动作的改动
+        'milkchat_action_hidden_v1'      // 被隐藏的内置动作
     ];
     var TEXT_LS_PREFIXES = ['customWeather_'];
 
