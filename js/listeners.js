@@ -82,6 +82,52 @@ function initChatActionListeners() {
                 _longPressTimer = null;
             }, { passive: true });
 
+            // ── 桌面端鼠标长按（Pointer Events）──────────────────────────
+            // 上游只在触屏环境测试过，工具栏显隐的唯一入口是上面的 touchstart 长按，
+            // 桌面浏览器没有 touch 事件，工具栏永远唤不出来（引用/表情/收藏/删除全灭）。
+            // 这里给真实鼠标补一路等价输入，接进同一条长按管线；
+            // pointerType 不是 'mouse' 的（触摸/触控笔）直接忽略，手机行为零变化。
+            let _mousePressStart = null;
+            DOMElements.chatContainer.addEventListener('pointerdown', (e) => {
+                if (e.pointerType !== 'mouse' || e.button !== 0) return;
+                const wrapper = e.target.closest('.message-wrapper');
+                if (!wrapper) return;
+                // 点到工具栏按钮本身，不触发长按
+                if (e.target.closest('.message-meta-actions')) return;
+                _mousePressStart = { x: e.clientX, y: e.clientY };
+                _longPressTriggered = false;
+                _longPressTimer = setTimeout(() => {
+                    _longPressTriggered = true;
+                    _mousePressStart = null;
+                    _hideAllActions();
+                    wrapper.classList.add('actions-visible');
+                    _clampActionsToolbar(wrapper);
+                    // 阻止文字选中
+                    if (window.getSelection) window.getSelection().removeAllRanges();
+                }, LONG_PRESS_MS);
+            });
+
+            // 按住拖动超过阈值 = 取消长按（对应手机上的 touchmove）。
+            // 6px 的阈值用来容忍手部微小抖动，避免按住不动也被误判成拖动
+            DOMElements.chatContainer.addEventListener('pointermove', (e) => {
+                if (e.pointerType !== 'mouse' || _mousePressStart === null) return;
+                const dx = e.clientX - _mousePressStart.x;
+                const dy = e.clientY - _mousePressStart.y;
+                if (dx * dx + dy * dy > 36) {
+                    clearTimeout(_longPressTimer);
+                    _longPressTimer = null;
+                    _mousePressStart = null;
+                }
+            });
+
+            // 松开清计时器。挂在 document 上：按住后拖出聊天区再松开也能收到
+            document.addEventListener('pointerup', (e) => {
+                if (e.pointerType !== 'mouse') return;
+                clearTimeout(_longPressTimer);
+                _longPressTimer = null;
+                _mousePressStart = null;
+            });
+
             // 点击空白处收起工具栏
             document.addEventListener('click', (e) => {
                 if (!e.target.closest('.message-wrapper')) {
