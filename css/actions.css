@@ -80,7 +80,6 @@
     margin-bottom: 12px;
     flex-wrap: wrap;
 }
-.mc-mode-tab,
 .mc-mini-btn {
     border: 1px solid var(--border-color, rgba(0, 0, 0, 0.1));
     background: var(--toolbar-btn-bg, transparent);
@@ -91,11 +90,6 @@
     cursor: pointer;
     transition: all 0.2s ease;
     white-space: nowrap;
-}
-.mc-mode-tab.active {
-    background: var(--accent-color, #b48c64);
-    border-color: var(--accent-color, #b48c64);
-    color: #fff;
 }
 .mc-mini-btn:hover {
     border-color: var(--accent-color, #b48c64);
@@ -147,11 +141,6 @@
     font-weight: 500;
     color: var(--text-primary, #333);
 }
-.mc-action-type {
-    font-size: 10px;
-    color: var(--text-secondary, #888);
-}
-
 .mc-hint {
     margin-top: 12px;
     font-size: 12px;
@@ -183,11 +172,6 @@
     font-size: 13px;
     font-weight: 600;
     color: var(--text-primary, #333);
-}
-.mc-list-type {
-    font-size: 11px;
-    font-weight: 400;
-    color: var(--text-secondary, #888);
 }
 .mc-list-desc {
     font-size: 11px;

@@ -1060,7 +1060,11 @@ function manageAutoSendTimer() {
                 // 动作模块可以接管这次心跳：返回 true 表示这次改发动作（它自己会补一句话），
                 // 这里就不再发普通消息。主动动作因此没有独立定时器，跟主动发送共用一条时间线。
                 if (typeof window._onAutoSendTick === 'function' && window._onAutoSendTick() === true) return;
+                // 心跳发话：立标志让动作模块跳过本次话缝穿插——心跳的动作份额已由上面的钩子给过，
+                // 发话时再插会悄悄抬高他的动作密度。simulateReply 同步排定全部定时器，调用期间标志有效。
+                window._heartbeatSpeaking = true;
                 simulateReply();
+                window._heartbeatSpeaking = false;
             }
         }, intervalMs);
     }
@@ -2606,6 +2610,28 @@ if (!isBatchMode && type === 'normal') {
                     DOMElements.chatContainer.scrollTop = DOMElements.chatContainer.scrollHeight;
                 }
             }
+            // 隐藏「正在输入」：提取成局部函数，供「最后一条话」和「动作槽位」两处复用
+            function hideTypingIndicator() {
+                try {
+                    if (window._typingIndicatorAutoHideTimer) {
+                        clearTimeout(window._typingIndicatorAutoHideTimer);
+                        window._typingIndicatorAutoHideTimer = null;
+                    }
+                } catch (e) {}
+                var _tiW = document.getElementById('typing-indicator-wrapper');
+                if (_tiW) {
+                    var _tiInner = _tiW.querySelector('.typing-indicator');
+                    if (_tiInner) {
+                        _tiInner.classList.add('hiding');
+                        setTimeout(function() {
+                            _tiW.style.display = 'none';
+                            if (_tiInner) _tiInner.classList.remove('hiding');
+                        }, 240);
+                    } else {
+                        _tiW.style.display = 'none';
+                    }
+                }
+            }
             let changed = false;
             messages.forEach(msg => {
                 if (msg.sender === 'user' && msg.status !== 'read') {
@@ -2709,11 +2735,30 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                 }
             }
 
-            for (let i = 0; i < replyCount; i++) {
-                const delayRange = settings.replyDelayMax - settings.replyDelayMin;
-                delay += settings.replyDelayMin + Math.random() * delayRange;
+            // ── 动作穿插（叠加）：话的数量分布不变，动作模块可能额外插进 1~2 个动作槽位 ──
+            const _slotSeq = (typeof window._mixActionSlots === 'function') ? window._mixActionSlots(replyCount) : null;
+            const _seqLen = _slotSeq ? _slotSeq.length : replyCount;
+            // 预计算每个话槽位是第几句话（「第一句话才可引用」的判定用）
+            let _speechOrd = 0;
+            const _speechOrdinals = _slotSeq ? _slotSeq.map(s => (s === 'speech' ? _speechOrd++ : -1)) : null;
+
+            for (let i = 0; i < _seqLen; i++) {
+                const _isActionSlot = !!_slotSeq && _slotSeq[i] === 'action';
+                // 动作紧接动作用 3~6s 短间隔（身体节奏）；其余衔接仍走 replyDelayMin~Max
+                if (_isActionSlot && i > 0 && _slotSeq[i - 1] === 'action') {
+                    delay += 3000 + Math.random() * 3000;
+                } else {
+                    const delayRange = settings.replyDelayMax - settings.replyDelayMin;
+                    delay += settings.replyDelayMin + Math.random() * delayRange;
+                }
                 setTimeout(() => {
                     try {
+                    // 动作槽位：交给动作模块发一个动作（库空时它自己退回一句话）
+                    if (_isActionSlot) {
+                        if (typeof window._fireActionSlot === 'function') window._fireActionSlot();
+                        if (i === _seqLen - 1) hideTypingIndicator();
+                        return;
+                    }
                     const replyPool = replyPoolOnce;
                     // 被屏蔽或无效项直接换下一个，尽量保证每次都产出可用回复
                     let replyText = '';
@@ -2735,8 +2780,8 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                             }
                         }
                     }
-                    if (!replyText && i === replyCount - 1) {
-                        (function(){try{if(window._typingIndicatorAutoHideTimer){clearTimeout(window._typingIndicatorAutoHideTimer);window._typingIndicatorAutoHideTimer=null;}}catch(e){}var _tiW=document.getElementById('typing-indicator-wrapper');if(_tiW){var _tiInner=_tiW.querySelector('.typing-indicator');if(_tiInner){_tiInner.classList.add('hiding');setTimeout(function(){_tiW.style.display='none';if(_tiInner)_tiInner.classList.remove('hiding');},240);}else{_tiW.style.display='none';}}})();
+                    if (!replyText && i === _seqLen - 1) {
+                        hideTypingIndicator();
                         return;
                     }
 
@@ -2769,7 +2814,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                         status: 'received',
                         favorited: false,
                         note: null,
-                        replyTo: (i === 0 && recentUserMsgs.length > 0 && Math.random() < 0.3)
+                        replyTo: ((_slotSeq ? _speechOrdinals[i] === 0 : i === 0) && recentUserMsgs.length > 0 && Math.random() < 0.3)
                             ? (function(){ const m = recentUserMsgs[Math.floor(Math.random() * recentUserMsgs.length)]; return { id: m.id, text: m.text, sender: m.sender }; })()
                             : null,
                         type: 'normal'
@@ -2817,28 +2862,8 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                         }, 300 + Math.random() * 400);
                     }
 
-                    if (i === replyCount - 1) {
-                        (function() {
-                            try {
-                                if (window._typingIndicatorAutoHideTimer) {
-                                    clearTimeout(window._typingIndicatorAutoHideTimer);
-                                    window._typingIndicatorAutoHideTimer = null;
-                                }
-                            } catch (e) {}
-                            var _tiW = document.getElementById('typing-indicator-wrapper');
-                            if (_tiW) {
-                                var _tiInner = _tiW.querySelector('.typing-indicator');
-                                if (_tiInner) {
-                                    _tiInner.classList.add('hiding');
-                                    setTimeout(function() {
-                                        _tiW.style.display = 'none';
-                                        if (_tiInner) _tiInner.classList.remove('hiding');
-                                    }, 240);
-                                } else {
-                                    _tiW.style.display = 'none';
-                                }
-                            }
-                        })();
+                    if (i === _seqLen - 1) {
+                        hideTypingIndicator();
                     }
                     } catch (e) {
                         console.error('[simulateReply] 渲染/回填出错:', e);
