@@ -122,14 +122,10 @@
         'pokeSym_my_custom', 'pokeSym_partner_custom',
         'disabledStickerItems',
         'dg_custom_data', 'dg_status_pool', 'weekly_fortune', 'daily_fortune',
-        'voiceTtsConfig',
-        // 动作模块（js/features/actions.js）
-        'milkchat_custom_actions_v1',    // 自定义动作
-        'milkchat_action_settings_v1',   // 动作设置
-        'milkchat_action_overrides_v1',  // 内置动作的改动
-        'milkchat_action_hidden_v1'      // 被隐藏的内置动作
+        'voiceTtsConfig'
+        // 动作模块的键统一走 TEXT_LS_PREFIXES 的 'milkchat_action_' 前缀，新增键自动上车
     ];
-    var TEXT_LS_PREFIXES = ['customWeather_'];
+    var TEXT_LS_PREFIXES = ['customWeather_', 'milkchat_action_'];
 
     // 同步状态（内存）
     var _state = {

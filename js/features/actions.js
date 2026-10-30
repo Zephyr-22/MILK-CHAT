@@ -15,7 +15,7 @@
 (function () {
     'use strict';
 
-    var STORE_KEY = 'milkchat_custom_actions_v1';
+    var STORE_KEY = 'milkchat_action_custom_v1';        // 旧键 milkchat_custom_actions_v1 由 loadStore 迁移
     var SET_KEY   = 'milkchat_action_settings_v1';      // 已弃用：仅 loadStore 里 removeItem 清理遗留数据
     var OVERRIDE_KEY = 'milkchat_action_overrides_v1';  // 内置动作的改动：{ 内置id: {字段:值} }
     var HIDDEN_KEY   = 'milkchat_action_hidden_v1';     // 被隐藏的内置动作：{ 内置id: true }
@@ -121,6 +121,17 @@
 
     /* ---------- 存取 ---------- */
     function loadStore() {
+        // 键名统一迁移（一次性、幂等）：milkchat_custom_actions_v1 → milkchat_action_custom_v1
+        // 新键已存在时不动（后同步的覆盖先同步的），旧键无论如何都删掉
+        try {
+            var legacyRaw = localStorage.getItem('milkchat_custom_actions_v1');
+            if (legacyRaw !== null) {
+                if (localStorage.getItem(STORE_KEY) === null) {
+                    localStorage.setItem(STORE_KEY, legacyRaw);
+                }
+                localStorage.removeItem('milkchat_custom_actions_v1');
+            }
+        } catch (e) {}
         try {
             var raw = localStorage.getItem(STORE_KEY);
             customActions = raw ? (JSON.parse(raw) || []) : [];
