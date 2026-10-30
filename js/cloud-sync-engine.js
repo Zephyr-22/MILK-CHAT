@@ -125,7 +125,8 @@
         'voiceTtsConfig'
         // 动作模块的键统一走 TEXT_LS_PREFIXES 的 'milkchat_action_' 前缀，新增键自动上车
     ];
-    var TEXT_LS_PREFIXES = ['customWeather_', 'milkchat_action_'];
+    // 动作模块走 'milkchat_action_'、习惯模块走 'milkchat_habit_'：新增键自动上车，不用逐个登记
+    var TEXT_LS_PREFIXES = ['customWeather_', 'milkchat_action_', 'milkchat_habit_'];
 
     // 同步状态（内存）
     var _state = {

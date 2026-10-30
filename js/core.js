@@ -1332,10 +1332,17 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
     }
 
     const isRedPacket = msg.type === 'redpacket';
+    const isHabit = msg.type === 'habit';
     const isImageOnly = !msg.text && !!msg.image;
     let content = msg.text ? `<div>${msg.text.replace(/\n/g, '<br>')}</div>` : '';
     if (isRedPacket) {
         content = (window.RedPacket && typeof window.RedPacket.renderBubbleHTML === 'function') ? window.RedPacket.renderBubbleHTML(msg) : '';
+    } else if (isHabit) {
+        // 习惯提醒：沿用红包那种「模块自己渲染气泡」的插件式扩展点。
+        // 模块没加载成功时退回纯文本，别让气泡变成空白
+        content = (window.Habits && typeof window.Habits.renderBubbleHTML === 'function')
+            ? window.Habits.renderBubbleHTML(msg)
+            : content;
     } else if (msg.image) {
         // 阶段三B：识别 oss:// 走懒加载；识别 pending:// 走本地 base64 + 上传中角标
         const isCloudImg = typeof msg.image === 'string' && msg.image.indexOf('oss://') === 0;
