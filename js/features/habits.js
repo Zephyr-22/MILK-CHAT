@@ -144,6 +144,18 @@
             if (typeof playSound === 'function') playSound('message');
         } catch (e) { console.warn('[habits] 发消息失败:', e); }
     }
+    /* 字卡节奏跟随聊天设置里的 replyDelayMin~Max，与他回一句话的时间感一致 */
+    function _cardDelay() {
+        var lo = 3000, hi = 7000;
+        try {
+            if (typeof settings !== 'undefined') {
+                lo = Number(settings.replyDelayMin) || 3000;
+                hi = Number(settings.replyDelayMax) || 7000;
+            }
+        } catch (e) {}
+        if (hi < lo) { var tmp = lo; lo = hi; hi = tmp; }
+        return lo + Math.random() * (hi - lo);
+    }
     function sayCard(delay) {
         var pool = cardPool();
         if (!pool.length) return;
@@ -179,7 +191,6 @@
                     store.remindLog[h.id] = t;
                     changed = true;
                     say('你已经 ' + missed + ' 天没' + h.name + '了——今天别忘了', h.id);
-                    sayCard(3000 + Math.random() * 3000);
                     return;
                 }
 
@@ -188,7 +199,6 @@
                     store.missLog[h.id] = t;
                     changed = true;
                     say('你已经 ' + missed + ' 天没' + h.name + '了', h.id);
-                    sayCard(3000 + Math.random() * 3000);
                 }
 
                 // 今日提醒：到点才说，每天每习惯只一条
@@ -196,7 +206,6 @@
                     store.remindLog[h.id] = t;
                     changed = true;
                     say('提醒：' + h.name, h.id);
-                    sayCard(3000 + Math.random() * 3000);
                 }
             });
             if (changed) save();
@@ -278,11 +287,13 @@
         if (!h) return;
         if (day !== today()) { toast('那天的已经结算了，只能打今天的'); return; }
         var i = h.history.indexOf(day);
-        if (i === -1) h.history.push(day);
-        else h.history.splice(i, 1);
+        var wasDone = i !== -1;
+        if (wasDone) h.history.splice(i, 1);
+        else h.history.push(day);
         save();
         updateBubbles(habitId, day);
-        toast(i === -1 ? '已打卡' : '已撤销打卡');
+        toast(wasDone ? '已撤销打卡' : '已打卡');
+        if (!wasDone) sayCard(_cardDelay());   // 打卡成功那一刻，他回一句
     }
 
     function ensureDOM() {

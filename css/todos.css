@@ -1,0 +1,293 @@
+/* ============================================================
+   待办清单（Todo）—— 配合 js/features/todos.js
+   - .mc-todos-overlay：全屏遮罩，居中弹出待办面板
+   - 骨架与配色沿用 habits.css / actions.css，自动跟随深浅色与配色方案
+   - 所有主题变量都写了兜底值，变量缺失时不会塌成透明
+   ============================================================ */
+
+.mc-todos-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10050;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+    padding: 16px;
+    box-sizing: border-box;
+}
+.mc-todos-overlay.active {
+    display: flex;
+}
+
+.mc-todos-panel {
+    width: 100%;
+    max-width: 440px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--secondary-bg, #fff);
+    border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+    border-radius: 18px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+    overflow: hidden;
+    animation: mcTodosPop 0.24s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+@keyframes mcTodosPop {
+    from { opacity: 0; transform: scale(0.94) translateY(10px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.mc-todos-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+    flex-shrink: 0;
+}
+.mc-todos-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary, #333);
+}
+.mc-todos-close {
+    border: none;
+    background: transparent;
+    font-size: 16px;
+    line-height: 1;
+    color: var(--text-secondary, #888);
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 8px;
+}
+.mc-todos-close:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.mc-todos-body {
+    padding: 12px 14px 16px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    flex: 1;
+}
+
+/* ---- 分组 ---- */
+.mc-todos-group-title {
+    font-size: 12px;
+    color: var(--text-secondary, #888);
+    margin: 14px 2px 6px;
+}
+.mc-todos-group-title:first-child {
+    margin-top: 4px;
+}
+.mc-todos-group {
+    border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+    border-radius: 12px;
+    padding: 2px 10px;
+}
+.mc-todos-group.empty {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-secondary, #888);
+    padding: 12px;
+}
+
+/* ---- 面板里的待办行 ---- */
+.mc-todo-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 2px;
+}
+.mc-todo-row + .mc-todo-row {
+    border-top: 1px solid var(--border-color, rgba(0, 0, 0, 0.06));
+}
+.mc-todo-check {
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    border: 1.5px solid var(--border-color, rgba(0, 0, 0, 0.3));
+    flex: 0 0 auto;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    background: transparent;
+    transition: background 0.15s, border-color 0.15s;
+}
+.mc-todo-check.done {
+    background: var(--accent-color, #c5a47e);
+    border-color: var(--accent-color, #c5a47e);
+}
+.mc-todo-check svg {
+    display: none;
+}
+.mc-todo-check.done svg {
+    display: block;
+}
+.mc-todo-text {
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
+    color: var(--text-primary, #333);
+    word-break: break-all;
+}
+.mc-todo-text.done {
+    color: var(--text-secondary, #999);
+    text-decoration: line-through;
+}
+.mc-todo-date {
+    font-size: 11px;
+    color: var(--text-secondary, #999);
+    flex: 0 0 auto;
+}
+.mc-todo-date.overdue {
+    color: #d85a30;
+}
+.mc-todo-op {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 4px;
+}
+.mc-todo-btn {
+    border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
+    background: transparent;
+    color: var(--text-secondary, #888);
+    font-size: 11px;
+    line-height: 1;
+    padding: 5px 7px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+.mc-todo-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--text-primary, #333);
+}
+
+/* ---- 新增 / 编辑表单 ---- */
+.mc-todo-form {
+    border: 1px dashed var(--border-color, rgba(0, 0, 0, 0.2));
+    border-radius: 12px;
+    padding: 12px;
+    margin-top: 14px;
+}
+.mc-todo-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.mc-todo-field > label {
+    font-size: 12px;
+    color: var(--text-secondary, #888);
+    flex: 0 0 46px;
+}
+.mc-todo-input {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    padding: 7px 9px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color, rgba(0, 0, 0, 0.15));
+    background: var(--secondary-bg, #fff);
+    color: var(--text-primary, #333);
+    box-sizing: border-box;
+}
+.mc-todo-input:focus {
+    outline: none;
+    border-color: var(--accent-color, #c5a47e);
+}
+.mc-todo-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+.mc-todo-primary {
+    border: none;
+    background: var(--accent-color, #c5a47e);
+    color: #fff;
+    font-size: 12px;
+    padding: 7px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+.mc-todo-ghost {
+    border: 1px solid var(--border-color, rgba(0, 0, 0, 0.15));
+    background: transparent;
+    color: var(--text-secondary, #888);
+    font-size: 12px;
+    padding: 7px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.mc-todos-tip {
+    margin-top: 12px;
+    font-size: 11px;
+    color: var(--text-secondary, #888);
+    line-height: 1.6;
+    text-align: center;
+}
+
+/* ---- 气泡内的清单卡片（长在聊天消息内） ---- */
+.mc-todo-bubble {
+    margin-top: 6px;
+    background: rgba(0, 0, 0, 0.035);
+    border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+    border-radius: 12px;
+    padding: 10px 12px;
+}
+.mc-todo-bubble-title {
+    font-size: 12.5px;
+    color: var(--text-primary, #333);
+    margin-bottom: 8px;
+}
+.mc-todo-bubble-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 4px 0;
+}
+.mc-todo-bubble-check {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    border: 1.5px solid var(--border-color, rgba(0, 0, 0, 0.35));
+    flex: 0 0 auto;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    background: transparent;
+    transition: background 0.15s, border-color 0.15s;
+}
+.mc-todo-bubble-check.done {
+    background: var(--accent-color, #c5a47e);
+    border-color: var(--accent-color, #c5a47e);
+}
+.mc-todo-bubble-check svg {
+    display: none;
+}
+.mc-todo-bubble-check.done svg {
+    display: block;
+}
+.mc-todo-bubble-text {
+    font-size: 13px;
+    color: var(--text-primary, #333);
+    flex: 1;
+    min-width: 0;
+    word-break: break-all;
+}
+.mc-todo-bubble-text.done {
+    color: var(--text-secondary, #999);
+    text-decoration: line-through;
+}
+.mc-todo-bubble-od {
+    font-size: 11px;
+    color: #d85a30;
+    margin-left: auto;
+    flex: 0 0 auto;
+}

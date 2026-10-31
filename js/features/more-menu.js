@@ -85,7 +85,10 @@
         { id: 'actions', iconClass: 'fas fa-hand-holding-heart', label: '动作', ready: false },
         // 占位项，真正的面板在 js/features/habits.js 里，它加载后会调用
         // registerItem('habits', ...) 把这项升级成真实功能
-        { id: 'habits', iconClass: 'fas fa-calendar-check', label: '习惯', ready: false }
+        { id: 'habits', iconClass: 'fas fa-calendar-check', label: '习惯', ready: false },
+        // 占位项，真正的面板在 js/features/todos.js 里，它加载后会调用
+        // registerItem('todos', ...) 把这项升级成真实功能
+        { id: 'todos', iconClass: 'fas fa-list-check', label: '待办', ready: false }
         // { id: 'xiaohongshu', iconClass: 'fas fa-book', label: '小红书', ready: false },
         // { id: 'douyin', iconClass: 'fab fa-tiktok', label: '抖音', ready: false }
     ];
