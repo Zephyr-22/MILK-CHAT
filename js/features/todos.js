@@ -1,6 +1,6 @@
 /* ============================================================
    待办清单（Todo）
-   - 今日 / 明日 / 逾期 三类，打开时各发一张「清单消息」（一条消息里多行，每行一个勾）
+   - 每日只发一张「今日清单」消息（今天到期的 + 逾期顺延的，行内标「挂了 N 天」），一次提醒就够，不单独发明天/逾期气泡
    - 待办的「完成」是「事情做完了」，不绑定具体某天，所以勾选永远有效，随时可勾可撤销
    - 没做完的事顺延：date < 今天 且未完成 -> 显示「挂了 N 天」，他每天会提一句
    - 面板里分组展示（今日 / 明日 / 逾期 / 已完成），面板和气泡都能勾，改同一份数据
@@ -93,9 +93,9 @@
     /* ---------- 让他开口 ---------- */
     function sayList(todos, kind) {
         if (!todos.length) return;
-        var lead = kind === 'today' ? '今日还有这些没做呢：'
-                 : kind === 'overdue' ? '你还有几件事没办：'
-                 : '明天记得做这些：';
+        // 有「今天到期」的用「今日还有这些没做呢」，否则（全是逾期顺延）用「你还有几件事没办」
+        var hasToday = todos.some(function (t) { return isToday(t); });
+        var lead = hasToday ? '今日还有这些没做呢：' : '你还有几件事没办：';
         try {
             if (typeof addMessage !== 'function') return;
             addMessage({
@@ -192,25 +192,21 @@
             if (lastSettleDay && lastSettleDay !== t) refreshAllBubbles();
             lastSettleDay = t;
 
-            var todayTodos = [], odTodos = [], tmTodos = [];
+            // 每天只提醒一次：把「今天该做的」合并成一条今日清单
+            // （今天到期的 + 逾期顺延的；逾期项在行内标「挂了 N 天」），不再单独发明天/逾期气泡
+            var todayTodos = [], odTodos = [];
             store.todos.forEach(function (it) {
                 if (it.done) return;
                 if (isToday(it)) todayTodos.push(it);
-                else if (isTomorrow(it)) tmTodos.push(it);
                 else if (isOverdue(it)) odTodos.push(it);
             });
+            var combined = todayTodos.concat(odTodos);
 
-            var changed = false;
-            if (todayTodos.length && !store.todayLog[t]) {
-                store.todayLog[t] = true; changed = true; sayList(todayTodos, 'today');
+            if (combined.length && !store.todayLog[t]) {
+                store.todayLog[t] = true;
+                sayList(combined, 'today');
+                save();
             }
-            if (odTodos.length && !store.overdueLog[t]) {
-                store.overdueLog[t] = true; changed = true; sayList(odTodos, 'overdue');
-            }
-            if (tmTodos.length && !store.tomorrowLog[t]) {
-                store.tomorrowLog[t] = true; changed = true; sayList(tmTodos, 'tomorrow');
-            }
-            if (changed) save();
         } catch (e) { console.warn('[todos] 结算异常:', e); }
         settling = false;
     }
@@ -228,10 +224,22 @@
         if (!msg) return '';
         var lead = msg.text ? esc(msg.text) : '';
         var kind = msg.todoKind || 'today';
+        // 优先用消息里存的 todoIds；若回查不到（持久化/时序漏存），实时按 kind 从 store 取，避免气泡只剩标题
+        var list;
         var ids = Array.isArray(msg.todoIds) ? msg.todoIds : [];
-        var rows = ids.map(function (id) {
-            var t = findTodo(id);
-            if (!t) return '';                       // 待办被删了，跳过这一行
+        var byIds = ids.map(findTodo).filter(Boolean);
+        if (byIds.length) {
+            list = byIds;
+        } else {
+            list = (store.todos || []).filter(function (t) {
+                if (t.done) return false;
+                if (kind === 'today') return isToday(t) || isOverdue(t);
+                if (kind === 'overdue') return isOverdue(t);
+                if (kind === 'tomorrow') return isTomorrow(t);
+                return false;
+            });
+        }
+        var rows = list.map(function (t) {
             return rowHTML(t, t.done, kind === 'overdue' ? overdueDays(t) : 0, kind);
         }).join('');
         if (!rows) return lead ? '<div>' + lead + '</div>' : '';
@@ -375,7 +383,7 @@
                 '</div>';
 
         html += group('已完成', doneList);
-        html += '<div class="mc-todos-tip">这里记录与勾选；他会在打开时按今日 / 明日 / 逾期各提醒一次。</div>';
+        html += '<div class="mc-todos-tip">这里记录与勾选；他会在每天打开时提醒一次今日待办（含逾期顺延的）。</div>';
         body.innerHTML = html;
     }
     function renderPanelSafe() {
