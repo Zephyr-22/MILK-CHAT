@@ -5,6 +5,15 @@
     flex-direction: column;
     gap: 6px;
 }
+.mc-cd-sec {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary, #7a8794);
+    margin: 10px 2px 4px;
+    padding-left: 8px;
+    border-left: 3px solid var(--accent-color, #ff8fab);
+}
+.mc-cd-sec:first-child { margin-top: 2px; }
 .mc-cd-row {
     display: flex;
     align-items: center;
@@ -20,6 +29,15 @@
     line-height: 1.5;
     color: var(--text-primary, #1f2a37);
     word-break: break-word;
+}
+.mc-cd-stk {
+    flex: 0 0 auto;
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid var(--border-color, #e3e5ec);
+    background: var(--bg-primary, #fff);
 }
 .mc-cd-acts {
     flex: 0 0 auto;
