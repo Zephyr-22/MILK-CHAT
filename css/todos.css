@@ -291,3 +291,16 @@
     margin-left: auto;
     flex: 0 0 auto;
 }
+
+/* ---- 已完成「展开全部 / 收起」 ---- */
+.mc-todo-showall {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-secondary, #888);
+    padding: 9px 0 4px;
+    cursor: pointer;
+    user-select: none;
+}
+.mc-todo-showall:hover {
+    color: var(--accent-color, #c5a47e);
+}

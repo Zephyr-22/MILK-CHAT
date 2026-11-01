@@ -3,7 +3,7 @@
    - 每日只发一张「今日清单」消息（今天到期的 + 逾期顺延的，行内标「挂了 N 天」），一次提醒就够，不单独发明天/逾期气泡
    - 待办的「完成」是「事情做完了」，不绑定具体某天，所以勾选永远有效，随时可勾可撤销
    - 没做完的事顺延：date < 今天 且未完成 -> 显示「挂了 N 天」，他每天会提一句
-   - 面板里分组展示（今日 / 明日 / 逾期 / 已完成），面板和气泡都能勾，改同一份数据
+   - 面板里分组展示（今日 / 7天内 / 逾期 / 以后 / 已完成），面板和气泡都能勾，改同一份数据
    - 结算靠「打开时结算 + 每分钟巡检」，不需要后台；页面开着跨过午夜也能重新归队
    - 存储键 milkchat_todo_v1；前缀 milkchat_todo_ 已在云同步白名单挂号
    ============================================================ */
@@ -12,6 +12,8 @@
     var STORE_KEY = 'milkchat_todo_v1';
     var store = { todos: [], todayLog: {}, overdueLog: {}, tomorrowLog: {} };
     var editingId = null;
+    var DONE_LIMIT = 10;          // 已完成默认只显示最近 N 条，更早的留数据但不渲染
+    var showAllDone = false;      // 是否展开全部已完成
 
     var CHECK_SVG = '<svg width="12" height="12" viewBox="0 0 12 12">' +
         '<path d="M2 6.2L4.6 8.8L10 3.2" stroke="#fff" stroke-width="1.8" fill="none" ' +
@@ -69,6 +71,13 @@
     /* ---------- 派生状态 ---------- */
     function isToday(t) { return t.date === today(); }
     function isTomorrow(t) { return t.date === tomorrow(); }
+    /* 7天内：明天 ~ 今天+7天（未来一周，不含今天，避免与「今日」重复）。用于面板「7天内」分组 */
+    function isWithin7(t) {
+        var d = dayDiff(today(), t.date);
+        return d >= 1 && d <= 7;
+    }
+    /* 以后：目标日 > 今天+7天，承接更远的待办，避免它们从面板消失（数据仍在） */
+    function isLater(t) { return dayDiff(today(), t.date) > 7; }
     /* 逾期：目标日已过且没做完。注意用字符串比较（同格式 YYYY-MM-DD 可直接比） */
     function isOverdue(t) { return t.date < today() && !t.done; }
     function overdueDays(t) { return isOverdue(t) ? dayDiff(t.date, today()) : 0; }
@@ -347,12 +356,13 @@
     function render() {
         var body = el('mcTodosBody');
         if (!body) return;
-        var todayList = [], tmList = [], odList = [], doneList = [];
+        var todayList = [], weekList = [], odList = [], laterList = [], doneList = [];
         store.todos.forEach(function (t) {
             if (t.done) doneList.push(t);
             else if (isToday(t)) todayList.push(t);
-            else if (isTomorrow(t)) tmList.push(t);
+            else if (isWithin7(t)) weekList.push(t);
             else if (isOverdue(t)) odList.push(t);
+            else if (isLater(t)) laterList.push(t);
         });
         // 逾期按挂得久的排前；已完成按完成日倒序
         odList.sort(function (a, b) { return overdueDays(b) - overdueDays(a); });
@@ -363,8 +373,9 @@
                    ' 项 · 逾期 ' + odList.length + ' 项</div>';
 
         html += group('今日', todayList);
-        html += group('明日', tmList);
+        html += group('7天内', weekList);
         html += group('逾期', odList);
+        html += group('以后', laterList);
 
         var ed = editingId ? findTodo(editingId) : null;
         html += '<div class="mc-todo-form">' +
@@ -382,7 +393,20 @@
                     '</div>' +
                 '</div>';
 
-        html += group('已完成', doneList);
+        // 已完成精简：默认只显示最近 DONE_LIMIT 条，更早的留 localStorage 不渲染（视图隐藏，非删除）
+        var doneHidden = Math.max(0, doneList.length - DONE_LIMIT);
+        var doneShown = showAllDone ? doneList : doneList.slice(0, DONE_LIMIT);
+        if (!doneList.length) {
+            html += '<div class="mc-todos-group-title">已完成</div><div class="mc-todos-group empty">空</div>';
+        } else {
+            html += '<div class="mc-todos-group-title">已完成（' + doneList.length + '）</div>' +
+                    '<div class="mc-todos-group">' + doneShown.map(panelRow).join('') + '</div>';
+            if (!showAllDone && doneHidden > 0) {
+                html += '<div class="mc-todo-showall" data-act="showall-done">展开全部 ' + doneList.length + ' 条</div>';
+            } else if (showAllDone) {
+                html += '<div class="mc-todo-showall" data-act="showall-done">收起</div>';
+            }
+        }
         html += '<div class="mc-todos-tip">这里记录与勾选；他会在每天打开时提醒一次今日待办（含逾期顺延的）。</div>';
         body.innerHTML = html;
     }
@@ -416,6 +440,11 @@
             store.todos = store.todos.filter(function (x) { return x.id !== id; });
             if (editingId === id) editingId = null;
             save();
+            render();
+            return;
+        }
+        if (a === 'showall-done') {
+            showAllDone = !showAllDone;
             render();
             return;
         }
