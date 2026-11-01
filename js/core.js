@@ -1349,6 +1349,11 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
         content = (window.Todos && typeof window.Todos.renderBubbleHTML === 'function')
             ? window.Todos.renderBubbleHTML(msg)
             : content;
+    } else if (msg.type === 'card-delete') {
+        // 字卡自删提议：同一套「模块自己渲染气泡」的插件式扩展点
+        content = (window.CardDelete && typeof window.CardDelete.renderBubbleHTML === 'function')
+            ? window.CardDelete.renderBubbleHTML(msg)
+            : content;
     } else if (msg.image) {
         // 阶段三B：识别 oss:// 走懒加载；识别 pending:// 走本地 base64 + 上传中角标
         const isCloudImg = typeof msg.image === 'string' && msg.image.indexOf('oss://') === 0;
@@ -2719,7 +2724,12 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                 return;
             }
 
-            // 确认有可用回复后再展示“正在输入中”，避免空转
+            // ── 字卡自删提议：在他本要发包卡的这一轮，小概率改为提议删除（每日上限 1 次）──
+            if (window.CardDelete && typeof window.CardDelete.maybePropose === 'function') {
+                if (window.CardDelete.maybePropose()) return;
+            }
+
+            // 确认有可用回复后再展示"正在输入中"，避免空转
             showTypingIndicator();
             let delay = 0;
             // 陪伴页静默触发时不引用用户消息（陪伴中的触发不是用户发了某条具体消息）

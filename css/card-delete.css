@@ -1,0 +1,64 @@
+/* 字卡自删提议气泡 */
+.mc-cd-bubble {
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.mc-cd-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    background: var(--secondary-bg, #f2f3f7);
+    border: 1px solid var(--border-color, #e3e5ec);
+    border-radius: 12px;
+}
+.mc-cd-text {
+    flex: 1 1 auto;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-primary, #1f2a37);
+    word-break: break-word;
+}
+.mc-cd-acts {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 6px;
+}
+.mc-cd-btn {
+    border: 1px solid var(--border-color, #d8dae3);
+    background: var(--bg-primary, #fff);
+    color: var(--text-primary, #1f2a37);
+    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background .15s, border-color .15s, opacity .15s;
+}
+.mc-cd-btn.agree {
+    border-color: var(--accent-color, #5b8cff);
+    color: var(--accent-color, #5b8cff);
+}
+.mc-cd-btn.agree:hover {
+    background: var(--accent-color, #5b8cff);
+    color: #fff;
+}
+.mc-cd-btn.reject:hover {
+    background: var(--secondary-bg, #f2f3f7);
+}
+.mc-cd-row.resolved {
+    opacity: .72;
+}
+.mc-cd-row.agreed {
+    border-color: #cfe9d8;
+    background: #eef8f1;
+}
+.mc-cd-row.rejected {
+    border-color: #f0ddd9;
+    background: #fbf2ef;
+}
+.mc-cd-state {
+    font-size: 12px;
+    color: var(--text-secondary, #6b7280);
+}
