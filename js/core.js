@@ -2700,7 +2700,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                 });
             }
 
-            const replyCount = Math.random() < 0.75 ? 1: (Math.random() < 0.95 ? 2: 3);
+            const replyCount = Math.random() < 0.72 ? 1: (Math.random() < 0.95 ? 2: 3);
             if (!customReplies || customReplies.length === 0) {
                 showNotification('回复库为空，请先到「自定义回复」中添加内容', 'info', 3500);
                 return;
