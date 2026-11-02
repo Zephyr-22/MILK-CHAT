@@ -2688,7 +2688,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
             if (_doThrow) {
                 window.ThrowEgg.partnerThrow();
             }
-            if (_doPoke || _doThrow) return;
+            if (_doPoke || _doThrow) { hideTypingIndicator(); return; }
 
             // ── 梦角主动发红包：跟上面拍一拍是完全独立的两套判定，互不影响——
             // 不 return，不影响这次正常回复照常生成；异步调用，不 await，不拖慢/阻塞回复流程，
@@ -2703,7 +2703,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
             const replyCount = Math.random() < 0.72 ? 1: (Math.random() < 0.95 ? 2: 3);
             if (!customReplies || customReplies.length === 0) {
                 showNotification('回复库为空，请先到「自定义回复」中添加内容', 'info', 3500);
-                return;
+                hideTypingIndicator(); return;
             }
             const disabledItemsOnce = (() => {
                 try {
@@ -2721,12 +2721,12 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                 .filter(Boolean);
             if (!replyPoolOnce.length) {
                 showNotification('回复库可用内容为空（可能被分组禁用或屏蔽），请到「自定义回复」中调整', 'info', 4000);
-                return;
+                hideTypingIndicator(); return;
             }
 
             // ── 字卡自删提议：在他本要发包卡的这一轮，小概率改为提议删除（每日上限 1 次）──
             if (window.CardDelete && typeof window.CardDelete.maybePropose === 'function') {
-                if (window.CardDelete.maybePropose()) return;
+                if (window.CardDelete.maybePropose()) { hideTypingIndicator(); return; }
             }
 
             // 确认有可用回复后再展示"正在输入中"，避免空转

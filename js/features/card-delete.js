@@ -208,9 +208,18 @@
         items.forEach(function (it) {
             var k = it.kind || 'card';
             var content = it.content;
-            var inner = (k === 'sticker')
-                ? '<img class="mc-cd-stk" src="' + esc(content) + '" alt="[表情包]" onerror="this.style.opacity=0.35;this.alt=\'[图片]\'">'
-                : '<div class="mc-cd-text">' + esc(content) + '</div>';
+            var inner;
+            if (k === 'sticker') {
+                // 与核心渲染一致：oss:// 走云端懒加载（data-lazy-cloud-ref），
+                // 否则直接 src（本地 data URL / http）。否则云同步下表情包只存 oss:// 引用，
+                // 直接当 src 浏览器不认，会触发 onerror 破图。
+                var _isCloud = (typeof content === 'string' && content.indexOf('oss://') === 0);
+                inner = _isCloud
+                    ? '<img class="mc-cd-stk" data-lazy-cloud-ref="' + esc(content) + '" alt="[表情包]">'
+                    : '<img class="mc-cd-stk" src="' + esc(content) + '" alt="[表情包]" onerror="this.style.opacity=0.35;this.alt=\'[图片]\'">';
+            } else {
+                inner = '<div class="mc-cd-text">' + esc(content) + '</div>';
+            }
             html += '<div class="mc-cd-row" data-idx="' + idx + '" data-kind="' + k + '" data-content="' + esc(content) + '">' +
                             inner +
                             '<div class="mc-cd-acts">' +
