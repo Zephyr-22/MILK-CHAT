@@ -105,6 +105,19 @@
     color: var(--text-primary, #333);
 }
 
+/* ---- A/B 切换 tab（grid 主视图）---- */
+.mc-tab-spacer { flex: 1 1 auto; min-width: 4px; }
+.mc-tab.active[data-group="A"] {
+    border-color: #2e8b57;
+    color: #2e8b57;
+    background: rgba(46, 139, 87, 0.12);
+}
+.mc-tab.active[data-group="B"] {
+    border-color: #c0392b;
+    color: #c0392b;
+    background: rgba(192, 57, 43, 0.12);
+}
+
 /* ---- 动作网格 ---- */
 .mc-actions-grid {
     display: grid;
@@ -112,6 +125,7 @@
     gap: 10px;
 }
 .mc-action-item {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -147,6 +161,39 @@
     color: var(--text-secondary, #888);
     text-align: center;
 }
+
+/* ---- A/B 分组标题与角标 ---- */
+.mc-group-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 16px 0 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary, #333);
+}
+.mc-group-head:first-of-type { margin-top: 4px; }
+.mc-group-sub {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-secondary, #888);
+}
+.mc-group-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 7px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    vertical-align: middle;
+}
+.mc-group-badge.a { color: #2e8b57; background: rgba(46, 139, 87, 0.14); }
+.mc-group-badge.b { color: #c0392b; background: rgba(192, 57, 43, 0.14); }
+.mc-group-badge.c { color: var(--text-secondary, #888); background: var(--secondary-bg, #eee); }
 
 /* ---- 管理列表 ---- */
 .mc-list {

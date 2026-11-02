@@ -20,57 +20,137 @@
     var OVERRIDE_KEY = 'milkchat_action_overrides_v1';  // 内置动作的改动：{ 内置id: {字段:值} }
     var HIDDEN_KEY   = 'milkchat_action_hidden_v1';     // 被隐藏的内置动作：{ 内置id: true }
 
-    /* ---------- 内置动作库（{partner}=对方名字，{me}=我的名字）---------- */
+    /* ---------- 内置动作库（{partner}=对方名字，{me}=我的名字）
+       group: 'A'=温和 / 'B'=激烈；仅用于面板分组展示，抽签等概率、不分组加权。 ---------- */
     var DEFAULT_ACTIONS = [
-        { id: 'a1', name: '拥抱', icon: '🫂', type: 'mutual',
+        // ===== A 组 · 温和（18）=====
+        { id: 'a1', name: '拥抱', icon: '🫂', type: 'mutual', group: 'A',
           desc: '{partner}紧紧抱住你，下巴抵在你头顶',
           meDesc: '你紧紧抱住{partner}，把脸埋在他胸口' },
-        { id: 'a2', name: '亲吻', icon: '💋', type: 'mutual',
+        { id: 'a2', name: '亲吻', icon: '💋', type: 'mutual', group: 'A',
           desc: '{partner}低头吻住你，温柔而霸道',
           meDesc: '你踮起脚尖吻住{partner}，手指攥住他的衣襟' },
-        { id: 'a3', name: '摸头', icon: '🤚', type: 'other',
+        { id: 'a3', name: '摸头', icon: '🤚', type: 'other', group: 'A',
           desc: '{partner}揉了揉你的头发，眼底带笑',
           meDesc: '你伸手揉了揉{partner}的头发，把他的刘海拨乱' },
-        { id: 'a4', name: '牵手', icon: '🤝', type: 'mutual',
+        { id: 'a4', name: '牵手', icon: '🤝', type: 'mutual', group: 'A',
           desc: '{partner}握住你的手，十指相扣',
           meDesc: '你握住{partner}的手，十指扣进他指缝' },
-        { id: 'a5', name: '壁咚', icon: '🧱', type: 'other',
-          desc: '{partner}将你困在臂弯里，气息逼近',
-          meDesc: '你将{partner}推到墙上，手掌按在他耳侧的墙面' },
-        { id: 'a6', name: '投喂', icon: '🍰', type: 'other',
+        { id: 'a6', name: '投喂', icon: '🍰', type: 'other', group: 'A',
           desc: '{partner}将甜品递到你嘴边，"张嘴"',
           meDesc: '你把甜品递到{partner}嘴边，又往前送了半寸' },
-        { id: 'a7', name: '捏脸', icon: '🤏', type: 'other',
+        { id: 'a7', name: '捏脸', icon: '🤏', type: 'other', group: 'A',
           desc: '{partner}捏了捏你的脸，"软软的"',
           meDesc: '你捏了捏{partner}的脸，指腹在他脸颊上揉了一圈' },
-        { id: 'a8', name: '靠肩', icon: '🛋️', type: 'mutual',
+        { id: 'a8', name: '靠肩', icon: '🛋️', type: 'mutual', group: 'A',
           desc: '{partner}拍了拍肩膀，"靠过来，不用犹豫"',
           meDesc: '你把头靠上{partner}的肩，又挪了挪位置' },
-        { id: 'a9', name: '挠下巴', icon: '✋', type: 'other',
+        { id: 'a9', name: '挠下巴', icon: '✋', type: 'other', group: 'A',
           desc: '{partner}挠了挠你的下巴，像在逗猫',
           meDesc: '你挠了挠{partner}的下巴，指节顺着下颌线刮过' },
-        { id: 'a10', name: '背后抱', icon: '🫂', type: 'other',
+        { id: 'a10', name: '背后抱', icon: '🫂', type: 'other', group: 'A',
           desc: '{partner}从背后环住你，用唇蹭了蹭你的脖子',
           meDesc: '你从背后环住{partner}，双臂在他胸前收紧' },
-        { id: 'a11', name: '额头吻', icon: '💋', type: 'other',
+        { id: 'a11', name: '额头吻', icon: '💋', type: 'other', group: 'A',
           desc: '{partner}在你额头落下一吻，很轻',
           meDesc: '你在{partner}额头落下一吻，唇多停了两秒' },
-        { id: 'a12', name: '耳语', icon: '👂', type: 'other',
+        { id: 'a12', name: '耳语', icon: '👂', type: 'other', group: 'A',
           desc: '{partner}凑近你耳边，低语："在想什么？我倒是想你了"',
           meDesc: '你凑近{partner}耳边，一字一句说给他听' },
-        { id: 'a13', name: '拽手腕', icon: '✊', type: 'other',
-          desc: '{partner}拽住你的手腕，拉进怀里',
-          meDesc: '你拽住{partner}的手腕，往自己这边一带' },
-        { id: 'a14', name: '揉后颈', icon: '🤚', type: 'other',
+        { id: 'a14', name: '揉后颈', icon: '🤚', type: 'other', group: 'A',
           desc: '{partner}的手覆上你的后颈，轻轻揉捏',
           meDesc: '你的手覆上{partner}的后颈，拇指慢慢揉开' },
-        { id: 'a15', name: '蹭鼻尖', icon: '👃', type: 'mutual',
-          desc: '你们鼻尖相蹭，呼吸交缠',
+        { id: 'a15', name: '蹭鼻尖', icon: '👃', type: 'mutual', group: 'A',
+          desc: '{partner}低下头，鼻尖抵上你的，轻轻蹭了两下',
           meDesc: '你蹭了蹭{partner}的鼻尖，又蹭了第二下' },
-        { id: 'a16', name: '拍背', icon: '👋', type: 'other',
+        { id: 'a16', name: '拍背', icon: '👋', type: 'other', group: 'A',
           desc: '{partner}轻拍你的背，像在哄小孩',
-          meDesc: '你轻拍{partner}的背，一下一下顺着脊骨往下' }
+          meDesc: '你轻拍{partner}的背，一下一下顺着脊骨往下' },
+        { id: 'a17', name: '埋颈窝', icon: '🔥', type: 'mutual', group: 'A',
+          desc: '{partner}把脸埋进你颈窝，呼吸一下下打在你皮肤上',
+          meDesc: '你把脸埋进{partner}颈窝，双臂环紧他的腰' },
+        { id: 'a18', name: '盖毯子', icon: '🧣', type: 'mutual', group: 'A',
+          desc: '{partner}把毯子拉过你肩头，边角仔细掖好',
+          meDesc: '你把毯子拉过{partner}肩头，把边角掖紧' },
+        { id: 'a19', name: '先服软', icon: '🕊️', type: 'mutual', group: 'A',
+          desc: '{partner}别开眼不肯看，顿了顿，又转回来用指尖碰了碰你的手',
+          meDesc: '你别开眼不肯看，顿了顿，又转回来用指尖碰了碰{partner}的手' },
+        { id: 'a20', name: '捧脸', icon: '🫶', type: 'mutual', group: 'A',
+          desc: '{partner}双手捧住你的脸，拇指擦过颧骨，目光停住',
+          meDesc: '你双手捧住{partner}的脸，拇指擦过颧骨，掌心收拢' },
+        // ===== B 组 · 激烈（18，允许稍微露骨）=====
+        { id: 'a5', name: '壁咚', icon: '🧱', type: 'other', group: 'B',
+          desc: '{partner}将你困在臂弯里，气息逼近',
+          meDesc: '你将{partner}推到墙上，手掌按在他耳侧的墙面' },
+        { id: 'a13', name: '拽手腕', icon: '✊', type: 'other', group: 'B',
+          desc: '{partner}拽住你的手腕，拉进怀里',
+          meDesc: '你拽住{partner}的手腕，往自己这边一带' },
+        { id: 'a21', name: '压过来', icon: '🛏️', type: 'mutual', group: 'B',
+          desc: '{partner}翻身把你压在身下，手撑在你耳侧，眼神没移开过',
+          meDesc: '你翻身把{partner}压在身下，握住他两只手腕' },
+        { id: 'a22', name: '含指', icon: '👄', type: 'mutual', group: 'B',
+          desc: '{partner}含住你的指尖，眼睛一直看着你',
+          meDesc: '你把{partner}的指尖含进嘴里，齿尖轻轻划过' },
+        { id: 'a23', name: '耳后吻', icon: '💗', type: 'mutual', group: 'B',
+          desc: '{partner}的吻落在你耳后，气息比先前的更烫',
+          meDesc: '你吻在{partner}耳后，指腹蹭过他耳廓' },
+        { id: 'a24', name: '扣腰', icon: '🖐️', type: 'mutual', group: 'B',
+          desc: '{partner}的手扣在你腰侧，拇指隔着衣料慢慢摩挲',
+          meDesc: '你的手扣在{partner}腰侧，把他往自己这边带' },
+        { id: 'a25', name: '留痕', icon: '🫦', type: 'mutual', group: 'B',
+          desc: '{partner}在你颈侧反复吻同一处，直到留下痕迹',
+          meDesc: '你在{partner}颈侧反复吻同一处，不肯挪开' },
+        { id: 'a26', name: '解扣子', icon: '👔', type: 'mutual', group: 'B',
+          desc: '{partner}的手落在你第一颗扣子上，停住没动',
+          meDesc: '你的手落在{partner}第一颗扣子上，停住没动' },
+        { id: 'a27', name: '跨坐', icon: '🖤', type: 'mutual', group: 'B',
+          desc: '{partner}跨坐在你身上，双手撑在你两侧',
+          meDesc: '你跨坐在{partner}身上，双手撑在他两侧' },
+        { id: 'a28', name: '扣住手腕', icon: '⛓️', type: 'mutual', group: 'B',
+          desc: '{partner}把你的双手扣过头顶，俯身看你',
+          meDesc: '你把{partner}的双手扣过头顶，俯身看他' },
+        { id: 'a29', name: '托臀', icon: '🍑', type: 'mutual', group: 'B',
+          desc: '{partner}一手托住你的臀，把你的重量整个揽过去，指节陷进衣料',
+          meDesc: '你一手托住{partner}的臀，把他的重量整个揽过来，指节陷进衣料' },
+        { id: 'a30', name: '缠腿', icon: '🦵', type: 'mutual', group: 'B',
+          desc: '{partner}的腿挤进你双膝之间，膝盖抵着你，不肯退开',
+          meDesc: '你的腿挤进{partner}双膝之间，膝盖抵着他，不肯退开' },
+        { id: 'a31', name: '扯衣领', icon: '👕', type: 'mutual', group: 'B',
+          desc: '{partner}攥住你衣领往两侧扯，领口滑到肩头，顿了顿',
+          meDesc: '你攥住{partner}衣领往两侧扯，领口滑到他肩头，顿了顿' },
+        { id: 'a32', name: '勾颈', icon: '💞', type: 'mutual', group: 'B',
+          desc: '{partner}抬手勾住你后颈，拇指抵在下颌线，脸凑近',
+          meDesc: '你抬手勾住{partner}后颈，拇指抵在他下颌线，把他带近' },
+        { id: 'a33', name: '吻锁骨', icon: '💋', type: 'mutual', group: 'B',
+          desc: '{partner}低头吻在你锁骨上，唇停在那里，鼻息压得很低',
+          meDesc: '你低头吻在{partner}锁骨上，唇贴住，慢慢移动' },
+        { id: 'a34', name: '咬肩', icon: '🦷', type: 'mutual', group: 'B',
+          desc: '{partner}低头咬住你肩头，牙齿隔着衣料轻轻磨，鼻尖抵着',
+          meDesc: '你低头咬住{partner}肩头，牙齿隔着衣料轻轻磨，唇贴着' },
+        { id: 'a35', name: 'Spank', icon: '👋', type: 'mutual', group: 'B',
+          desc: '{partner}抬手在你臀上落下一巴掌，掌心发热，旋即停住',
+          meDesc: '你抬手在{partner}臀上落下一巴掌，掌心发热，旋即停住' },
+        { id: 'a36', name: '拉坐', icon: '🪑', type: 'mutual', group: 'B',
+          desc: '{partner}把你抱到腿上，手掌贴在你后背，额头抵着你肩',
+          meDesc: '你把{partner}拉到腿上，手掌贴着他后背，手臂收紧' }
     ];
+
+    /* 面板分组展示用：把动作按 group 归类（A / B / 未分组=C 自定义）；抽签不读这里。 */
+    var GROUP_META = {
+        A: { label: 'A · 温和', sub: '陪伴 · 照料 · 轻浅爱意' },
+        B: { label: 'B · 激烈', sub: '亲密张力 · 允许稍微露骨' },
+        C: { label: '自定义', sub: '未在 A/B 分组内' }
+    };
+    function groupActionList(list) {
+        var g = { A: [], B: [], C: [] };
+        for (var i = 0; i < list.length; i++) {
+            var a = list[i];
+            if (a.group === 'A') g.A.push(a);
+            else if (a.group === 'B') g.B.push(a);
+            else g.C.push(a);
+        }
+        return g;
+    }
 
     /* 回应概率：固定衰减链，不可调（设置项曾只有 replyChance 一个，去掉后设置面板整体退役）。
        回你动作：第 1 个 95%，中了掷第 2 个 72%，再中掷第 3 个 41.8% ——
@@ -94,6 +174,7 @@
     var hiddenBuiltins = {};       // 被隐藏的内置动作
     var currentView = 'grid';      // 'grid' | 'list' | 'add' | 'edit'
     var editingId = null;
+    var currentGroup = 'A';        // grid 主视图当前展示的组：'A' 温和 / 'B' 激烈
 
     /* ---------- 工具 ---------- */
     function esc(s) {
@@ -507,7 +588,7 @@
         var act = t.closest('[data-act]');
         if (!act) return;
         switch (act.getAttribute('data-act')) {
-            case 'random':   randomAction(); break;
+            case 'tab':      currentGroup = act.getAttribute('data-group') || 'A'; render(); break;
             case 'manage':   currentView = 'list'; render(); break;
             case 'back':     currentView = 'grid'; render(); break;
             case 'add-form': currentView = 'add'; editingId = null; render(); break;
@@ -521,12 +602,6 @@
         }
     }
 
-    function randomAction() {
-        var all = allActions();
-        if (!all.length) { toast('动作库为空'); return; }
-        sendAction(all[Math.floor(Math.random() * all.length)].id);
-    }
-
     /* ---------- 渲染 ---------- */
     function render() {
         var body = el('mcActionsBody');
@@ -537,62 +612,85 @@
         else if (currentView === 'edit') { renderForm(body, findAction(editingId)); }
     }
 
+    /* 单张卡片（主视图九宫格）：分组已由顶部 A/B tab 标明，卡片不再显示角标 */
+    function gridItemHtml(a) {
+        return '<div class="mc-action-item" role="button" data-id="' + esc(a.id) + '">' +
+            '<span class="mc-action-icon">' + esc(a.icon || '💫') + '</span>' +
+            '<span class="mc-action-name">' + esc(a.name) + '</span>' +
+            '</div>';
+    }
+
+    /* 单行（管理列表） */
+    function listItemHtml(a) {
+        var builtin = isBuiltin(a.id);
+        var hidden = builtin && isHidden(a.id);
+        var edited = builtin && isOverridden(a.id);
+        var tags = '';
+        if (hidden) tags += '<span class="mc-tag off">已隐藏</span>';
+        if (edited) tags += '<span class="mc-tag">已改</span>';
+        var badge = a.group === 'B' ? 'b' : (a.group === 'A' ? 'a' : 'c');
+        var badgeText = a.group === 'B' ? 'B' : (a.group === 'A' ? 'A' : '·');
+        var ops = '<button type="button" class="mc-mini-btn" data-act="edit" data-id="' + esc(a.id) + '">编辑</button>';
+        if (builtin) {
+            ops += hidden
+                ? '<button type="button" class="mc-mini-btn" data-act="show" data-id="' + esc(a.id) + '">显示</button>'
+                : '<button type="button" class="mc-mini-btn" data-act="hide" data-id="' + esc(a.id) + '">隐藏</button>';
+            if (edited || hidden) {
+                ops += '<button type="button" class="mc-mini-btn" data-act="reset-one" data-id="' + esc(a.id) + '">还原</button>';
+            }
+        } else {
+            ops += '<button type="button" class="mc-mini-btn danger" data-act="del" data-id="' + esc(a.id) + '">删除</button>';
+        }
+        return '<div class="mc-list-item' + (hidden ? ' is-hidden' : '') + '">' +
+            '<div class="mc-list-main">' +
+                '<div class="mc-list-name"><span class="mc-group-badge ' + badge + '">' + badgeText + '</span> ' +
+                    esc(a.icon || '💫') + ' ' + esc(a.name) + tags + '</div>' +
+                '<div class="mc-list-desc">他：' + esc(fill(a.desc)) + '</div>' +
+                (a.meDesc ? '<div class="mc-list-desc">我：' + esc(fill(a.meDesc)) + '</div>' : '') +
+            '</div>' +
+            '<div class="mc-list-ops">' + ops + '</div>' +
+        '</div>';
+    }
+
+    /* 按 A / B / C 顺序输出带分组标题的小节（仅展示用，抽签不读这里） */
+    function renderGroupSections(g, containerClass, itemFn) {
+        var out = '';
+        ['A', 'B', 'C'].forEach(function (k) {
+            if (!g[k].length) return;
+            var meta = GROUP_META[k];
+            out += '<div class="mc-group-head"><span>' + meta.label + '</span>' +
+                   '<span class="mc-group-sub">' + meta.sub + '（' + g[k].length + '）</span></div>';
+            out += '<div class="' + containerClass + '">' + g[k].map(itemFn).join('') + '</div>';
+        });
+        return out;
+    }
+
     function renderGrid(body) {
-        var all = allActions();
-        var html =
-            '<div class="mc-mode-row">' +
-                '<button type="button" class="mc-mini-btn" data-act="random">🎲 随机</button>' +
+        var g = groupActionList(allActions());
+        var tabBtn = function (k) {
+            var meta = GROUP_META[k];
+            return '<button type="button" class="mc-mini-btn mc-tab' + (currentGroup === k ? ' active' : '') +
+                '" data-act="tab" data-group="' + k + '">' + esc(meta.label) + '</button>';
+        };
+        var items = (g[currentGroup] || []).map(gridItemHtml).join('');
+        body.innerHTML =
+            '<div class="mc-mode-row mc-tabs">' +
+                tabBtn('A') + tabBtn('B') +
+                '<span class="mc-tab-spacer"></span>' +
                 '<button type="button" class="mc-mini-btn" data-act="manage">⚙️ 管理</button>' +
             '</div>' +
-            '<div class="mc-actions-grid">' +
-                all.map(function (a) {
-                    return '<div class="mc-action-item" role="button" data-id="' + esc(a.id) + '">' +
-                        '<span class="mc-action-icon">' + esc(a.icon || '💫') + '</span>' +
-                        '<span class="mc-action-name">' + esc(a.name) + '</span>' +
-                        '</div>';
-                }).join('') +
-            '</div>' +
+            '<div class="mc-actions-grid">' + items + '</div>' +
             '<div class="mc-hint">点一个动作，' + esc(partnerName()) + '会回应你</div>';
-        body.innerHTML = html;
     }
 
     function renderList(body) {
-        var all = allRows();
-        var html =
+        var g = groupActionList(allRows());
+        body.innerHTML =
             '<div class="mc-mode-row">' +
                 '<button type="button" class="mc-mini-btn" data-act="back">← 返回</button>' +
                 '<button type="button" class="mc-mini-btn" data-act="add-form">➕ 添加动作</button>' +
             '</div>' +
-            '<div class="mc-list">' +
-                all.map(function (a) {
-                    var builtin = isBuiltin(a.id);
-                    var hidden = builtin && isHidden(a.id);
-                    var edited = builtin && isOverridden(a.id);
-                    var tags = '';
-                    if (hidden) tags += '<span class="mc-tag off">已隐藏</span>';
-                    if (edited) tags += '<span class="mc-tag">已改</span>';
-                    var ops ='<button type="button" class="mc-mini-btn" data-act="edit" data-id="' + esc(a.id) + '">编辑</button>';
-                    if (builtin) {
-                        ops += hidden
-                            ? '<button type="button" class="mc-mini-btn" data-act="show" data-id="' + esc(a.id) + '">显示</button>'
-                            : '<button type="button" class="mc-mini-btn" data-act="hide" data-id="' + esc(a.id) + '">隐藏</button>';
-                        if (edited || hidden) {
-                            ops += '<button type="button" class="mc-mini-btn" data-act="reset-one" data-id="' + esc(a.id) + '">还原</button>';
-                        }
-                    } else {
-                        ops += '<button type="button" class="mc-mini-btn danger" data-act="del" data-id="' + esc(a.id) + '">删除</button>';
-                    }
-                    return '<div class="mc-list-item' + (hidden ? ' is-hidden' : '') + '">' +
-                        '<div class="mc-list-main">' +
-                            '<div class="mc-list-name">' + esc(a.icon || '💫') + ' ' + esc(a.name) + tags + '</div>' +
-                            '<div class="mc-list-desc">他：' + esc(fill(a.desc)) + '</div>' +
-                            (a.meDesc ? '<div class="mc-list-desc">我：' + esc(fill(a.meDesc)) + '</div>' : '') +
-                        '</div>' +
-                        '<div class="mc-list-ops">' + ops + '</div>' +
-                    '</div>';
-                }).join('') +
-            '</div>';
-        body.innerHTML = html;
+            renderGroupSections(g, 'mc-list', listItemHtml);
     }
 
     /* 类型下拉框已移除：other/mutual 对抽签完全等价（pickReplyAction 只排除 me），
@@ -742,7 +840,6 @@
         openPanel: openPanel,
         closePanel: closePanel,
         sendAction: sendAction,
-        randomAction: randomAction,
         fireProactiveAction: fireProactiveAction,
         getActions: function () { return allActions(); }
     };
