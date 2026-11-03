@@ -141,7 +141,11 @@
             if (!msgId) return;
             const msg = findMessage(msgId);
             if (!msg) return;
-            if (msg.voice || msg.image || msg.type === 'system') return;
+            // 只对普通文字消息做假语音。插件型气泡（habit 习惯打卡 / todo 待办 / redpacket 红包 /
+            // card-delete 自删提议 / system）自带 DOM 结构与交互按钮，被转成语音会丢按钮
+            // （2026-11-03 修：习惯提醒气泡的打卡框被误伤消失）。
+            if (msg.voice || msg.image) return;
+            if (msg.type && msg.type !== 'normal') return;
             if (!msg.text || !msg.text.trim()) return;
             if (msg._fakeVoiceConsidered) return;
             msg._fakeVoiceConsidered = true;
@@ -162,6 +166,9 @@
             if (!msgId) return;
             const msg = findMessage(msgId);
             if (!msg || !msg.voice) return;
+            // 插件型消息绝不渲染成语音条（覆盖 innerHTML 会把打卡/勾选等按钮一起吃掉）。
+            // 历史上被误转的消息在此跳过，文字由各模块 renderBubbleHTML 自行兜底恢复。
+            if (msg.type && msg.type !== 'normal') return;
             if (wrapper.dataset.voiceRendered === '1') return;
             wrapper.dataset.voiceRendered = '1';
 

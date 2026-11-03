@@ -252,7 +252,10 @@
     function renderBubbleHTML(msg) {
         if (!msg) return '';
         var h = msg.habitId ? findHabit(msg.habitId) : null;
-        var text = msg.text ? esc(msg.text) : '';
+        // 兜底：历史上被「假语音」误转的提醒消息，text 已被清空、原文存进了 msg.voice.fakeText。
+        // 这里取回来，避免气泡只剩按钮、没有提醒文字（2026-11-03 修）。
+        var _rawText = msg.text || (msg.voice && msg.voice.fakeText) || '';
+        var text = _rawText ? esc(_rawText) : '';
         if (!h) return text ? '<div>' + text + '</div>' : '';
         var day = msg.habitDate || today();
         var s = btnState(h, day);
