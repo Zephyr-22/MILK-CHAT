@@ -2,12 +2,13 @@
    自主删除提议（CardDelete）—— 支持三类：字卡 / Emoji / 表情包
    - 「他」在他本要发包卡的某一轮，以小概率改为提议删除若干条目
    - 三类各自独立、各自一条气泡（字卡一条 / Emoji 一条 / 表情包一条），互不影响
-   - 每类独立「每日 1 次上限」：各自用本地日期标记，当天该类占过名额后不再触发
+   - 每类独立「每日 1 次上限」：本机靠 localStorage 日期标记（每天只掷一次骰子），
+     跨设备靠「今天的聊天记录里已有该类自删气泡」回溯判定，两者取并集 → 云同步到另一台设备后不会重复弹
    - 每类各自 18.4% 概率（每次他本要发包卡时判定一次），所以不一定每天都触发
    - 字卡 / Emoji / 表情包：同意 = 物理删除并落盘（不可恢复，气泡完整显示内容让你看清）
    - 表情包走物理删除（此前逻辑禁用因无恢复入口已废弃），与字卡/Emoji 一致
    - 每条气泡独立处理：该气泡内所有项都表态后，他回一句「好，以后有需要了再加回来。」（仅当本气泡至少删了一条）
-   - 日期标记刻意不用 milkchat_ 前缀，不进云同步白名单
+   - 日期标记刻意不用 milkchat_ 前缀、不进云同步白名单（会变的状态进云端会被全量覆盖，反而放回名额）
    - 不做「已提议删除集合」：用户在本地多维表格自行备注
    - 测试：maybePropose() 正常路径；maybePropose('card' / 'emoji' / 'sticker') 可单独强制触发某一类
    ============================================================ */
@@ -16,6 +17,8 @@
     var PROB = 0.184;              // 每类触发概率（每次他本要发包卡时，对本类判定一次）
     var MAX_PER_BATCH = 5;        // 一次最多提议删除的条数（每类 1~5）
     // 每类独立每日上限：各自一个本地日期标记（刻意不用 milkchat_ 前缀，不进云同步白名单）
+    // 注意：这组标记只负责「本机今天是否已掷过骰子」这类易失状态；跨设备的「今天是否已触发」
+    // 由聊天记录回溯判定（见 proposedToday），两者取并集，任一命中即跳过。
     var LAST_DATE_KEYS = {
         card: 'mcCardDeleteCardLastDate',
         emoji: 'mcCardDeleteEmojiLastDate',
@@ -96,6 +99,43 @@
             out.push(copy.splice(i, 1)[0]);
         }
         return out;
+    }
+
+    /* ---------- 跨设备判据：今天的聊天记录里是否已有该类的自删气泡 ----------
+       messages 存 localforage 的 CHAT_APP_V3_chatMessages，走云同步，属于「已经发生的事实」，
+       是跨设备的可靠真相；而本地日期标记是会变的状态，本站云同步恢复侧又是全量覆盖、无合并语义，
+       把状态塞进云端只会被旧值覆盖、把名额重新放出来，反而更糟。
+       所以：本机节流靠 localStorage，跨设备去重靠「当天已有该类自删消息」回溯。 */
+    function _ymd(ts) {
+        var d = (ts instanceof Date) ? ts : new Date(ts);
+        if (isNaN(d.getTime())) return '';
+        var p = function (n) { return n < 10 ? '0' + n : '' + n; };
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+    }
+    function _getMessages() {
+        try { if (typeof messages !== 'undefined' && Array.isArray(messages)) return messages; } catch (e) {}
+        try { if (Array.isArray(window.messages)) return window.messages; } catch (e) {}
+        return [];
+    }
+    // 今天是否已有一条包含该 kind 的 card-delete 消息（可能是别的设备发的、经云同步过来的）
+    function proposedToday(kind) {
+        try {
+            var arr = _getMessages();
+            var t = today();
+            for (var i = arr.length - 1; i >= 0; i--) {   // 从新往旧扫，命中即返回
+                var m = arr[i];
+                if (!m || m.type !== 'card-delete') continue;
+                if (Array.isArray(m.items) && m.items.length) {
+                    var hit = false;
+                    for (var j = 0; j < m.items.length; j++) {
+                        if ((m.items[j] && (m.items[j].kind || 'card')) === kind) { hit = true; break; }
+                    }
+                    if (!hit) continue;
+                }
+                if (_ymd(m.timestamp) === t) return true;
+            }
+        } catch (e) {}
+        return false;
     }
 
     /* ---------- 删除执行 ---------- */
@@ -180,7 +220,11 @@
                 if (!forceKind) {
                     var last = '';
                     try { last = localStorage.getItem(LAST_DATE_KEYS[k]) || ''; } catch (e) {}
-                    if (last === today()) continue;                 // 今日该类已占过名额（已触发或已 Roll 未中）
+                    if (last === today()) continue;                 // 本机今日已掷过（已触发或已 Roll 未中）
+                    if (proposedToday(k)) {                         // 其它设备今日已触发（云同步过来的消息兜底）
+                        try { localStorage.setItem(LAST_DATE_KEYS[k], today()); } catch (e) {}   // 顺手补本地名额，省掉后续反复回溯
+                        continue;
+                    }
                     try { localStorage.setItem(LAST_DATE_KEYS[k], today()); } catch (e) {}  // 占当日名额
                     if (Math.random() >= PROB) continue;            // 本类概率未命中，名额已占，今日不再 Roll
                 }
