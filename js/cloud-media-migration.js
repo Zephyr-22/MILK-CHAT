@@ -205,6 +205,19 @@
             if (raw) disabledSet = new Set(JSON.parse(raw));
         } catch (e) {}
 
+        // 对方表情库分组里存的是同一批图片引用。迁移把 base64 换成 oss:// 后，
+        // 分组里的旧引用也必须一起换，否则迁移一跑全部分组失联。
+        var groupKey = APP_PREFIX_STR + sid + '_stickerGroups';
+        var groups = null;
+        var groupsDirty = false;
+        if (keySuffix === 'stickerLibrary') {
+            try {
+                var gRaw = await localforage.getItem(groupKey);
+                if (Array.isArray(gRaw)) groups = gRaw;
+            } catch (e) {}
+            if (!groups && Array.isArray(window.stickerGroups)) groups = window.stickerGroups;
+        }
+
         var newArr = [];
         for (var i = 0; i < arr.length; i++) {
             var item = arr[i];
@@ -235,6 +248,15 @@
                     disabledSet.delete(rawStr);
                     disabledSet.add(r.url);
                 }
+                // 分组里存的还是旧的 base64 引用，同步换成新的 oss:// 引用
+                if (groups) {
+                    groups.forEach(function (g) {
+                        if (!g || !Array.isArray(g.items)) return;
+                        for (var gi = 0; gi < g.items.length; gi++) {
+                            if (g.items[gi] === rawStr) { g.items[gi] = r.url; groupsDirty = true; }
+                        }
+                    });
+                }
                 _state.completed++;
             } catch (e) {
                 console.warn('[migration] ' + label + '上传失败', e);
@@ -248,6 +270,13 @@
 
         // 同步内存变量，防止 saveData() 把旧 base64 重新写回 localforage
         _syncMemory(key, newArr);
+
+        if (groupsDirty && groups) {
+            try {
+                await localforage.setItem(groupKey, groups);
+                window.stickerGroups = groups;
+            } catch (e) {}
+        }
 
         if (disabledSet !== null) {
             try {

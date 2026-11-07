@@ -171,6 +171,17 @@
             if (arr) {
                 for (var i = arr.length - 1; i >= 0; i--) { if (arr[i] === content) arr.splice(i, 1); }
             }
+            // 同步从所有分组移除该引用，避免分组里残留「库里已不存在」的死图片。
+            // 只改 items，绝不调用 CloudMedia.delete —— 云端对象由删除入口自己决定
+            try {
+                if (Array.isArray(window.stickerGroups)) {
+                    window.stickerGroups.forEach(function (g) {
+                        if (g && Array.isArray(g.items)) {
+                            g.items = g.items.filter(function (s) { return s !== content; });
+                        }
+                    });
+                }
+            } catch (e) {}
             // 同步从禁用集合移除（若存在），避免死条目残留
             try {
                 var raw = localStorage.getItem('disabledStickerItems');

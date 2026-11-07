@@ -218,6 +218,17 @@ const stickerInput = document.getElementById('sticker-file-input');
                                 }
                             }
                             stickerLibrary.push(toStore);
+                            // 归入上传前选定的目标分组。纯整理：只改 items，绝不调用 CloudMedia.delete
+                            try {
+                                var _tgid = window._stickerUploadTargetGroupId;
+                                if (_tgid != null && Array.isArray(window.stickerGroups)) {
+                                    var _tg = window.stickerGroups.find(function (g) { return g && g.id === _tgid; });
+                                    if (_tg) {
+                                        if (!Array.isArray(_tg.items)) _tg.items = [];
+                                        if (_tg.items.indexOf(toStore) === -1) _tg.items.push(toStore);
+                                    }
+                                }
+                            } catch (e) {}
                             successCount++;
                         } catch (err) {
                             console.error(err);
@@ -225,6 +236,7 @@ const stickerInput = document.getElementById('sticker-file-input');
                         }
                     }
 
+                    window._stickerUploadTargetGroupId = null;
                     throttledSaveData();
                     renderReplyLibrary();
 

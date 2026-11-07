@@ -2,6 +2,7 @@ if (typeof customReplyGroups === 'undefined') window.customReplyGroups = [];
 if (typeof replyGroupsEnabled === 'undefined') window.replyGroupsEnabled = false;
 if (typeof customPokeGroups === 'undefined') window.customPokeGroups = [];
 if (typeof customStatusGroups === 'undefined') window.customStatusGroups = [];
+if (typeof window.stickerGroups === 'undefined') window.stickerGroups = [];
 
 // 根据当前 tab 返回对应的分组上下文 {groups, items, itemLabel}
 function _getGroupCtx(tab) {
@@ -14,6 +15,12 @@ function _getGroupCtx(tab) {
         if (!window.customStatusGroups) window.customStatusGroups = [];
         return { groups: window.customStatusGroups, items: customStatuses, itemLabel: '状态' };
     }
+    // 对方表情库：stickerLibrary 是纯字符串数组，不能对象化，所以归属关系
+    // 照抄字卡分组——存在分组自己的 items 里，而不是每个条目上。
+    if (tab === 'stickers') {
+        if (!window.stickerGroups) window.stickerGroups = [];
+        return { groups: window.stickerGroups, items: stickerLibrary, itemLabel: '表情包', hideDisabled: true };
+    }
     // default: custom replies
     if (!window.customReplyGroups) window.customReplyGroups = [];
     return { groups: window.customReplyGroups, items: customReplies, itemLabel: '字卡' };
@@ -22,7 +29,7 @@ function _getGroupCtx(tab) {
 // 判断当前 tab 是否支持分组
 function _tabHasGroups(tab) {
     tab = tab || currentSubTab;
-    return tab === 'custom' || tab === 'pokes' || tab === 'statuses';
+    return tab === 'custom' || tab === 'pokes' || tab === 'statuses' || tab === 'stickers';
 }
 
 let _batchSelectedIndices = new Set();
@@ -165,7 +172,7 @@ function _renderListContentOnly() {
     }
 
     if (renderType === 'emoji') { _renderEmojiTab(list, itemsToRender); return; }
-    if (renderType === 'image') { _renderStickerTab(list, itemsToRender); return; }
+    if (renderType === 'image') { _renderStickerTab(list, _visibleStickerEntries(itemsToRender)); return; }
 
     const q = _searchQuery.toLowerCase().trim();
     const filtered = q ? itemsToRender.filter(item => item.toLowerCase().includes(q)) : itemsToRender;
@@ -262,7 +269,7 @@ function renderReplyLibrary() {
     }
 
     if (renderType === 'emoji') { _renderEmojiTab(list, itemsToRender); return; }
-    if (renderType === 'image') { _renderStickerTab(list, itemsToRender); return; }
+    if (renderType === 'image') { _renderStickerTab(list, _visibleStickerEntries(itemsToRender)); return; }
 
     const q = _searchQuery.toLowerCase().trim();
     let filtered = q ? itemsToRender.filter(item => item.toLowerCase().includes(q)) : itemsToRender;
@@ -302,7 +309,11 @@ function _renderModernToolbar() {
 
     const disabledSet = _getDisabledItemsSet();
     const ctx = _getGroupCtx();
-    const totalItems = isMainCustom ? customReplies.length : (isStickersTab ? stickerLibrary.length : 0);
+    // 筛选状态下「全选」只覆盖可见项，否则批量删除会连带删掉被筛掉的图
+    const totalItems = isMainCustom ? customReplies.length
+        : (isStickersTab
+            ? (_activeGroupFilter !== null ? _visibleStickerEntries(stickerLibrary).length : stickerLibrary.length)
+            : 0);
     const selectedCount = _batchSelectedIndices.size;
 
     const addBtnLabel = (() => {
@@ -522,13 +533,17 @@ function _renderModernToolbar() {
         toolbar.querySelector('#batch-select-all-btn')?.addEventListener('click', () => {
             if (_batchSelectedIndices.size === totalItems) _batchSelectedIndices.clear();
             else {
-                const pool = isMainCustom ? customReplies : stickerLibrary;
-                pool.forEach((_, i) => _batchSelectedIndices.add(i));
+                if (isStickersTab && _activeGroupFilter !== null) {
+                    _visibleStickerEntries(stickerLibrary).forEach(e => _batchSelectedIndices.add(e.realIndex));
+                } else {
+                    const pool = isMainCustom ? customReplies : stickerLibrary;
+                    pool.forEach((_, i) => _batchSelectedIndices.add(i));
+                }
             }
             renderReplyLibrary();
         });
         toolbar.querySelector('#batch-group-btn')?.addEventListener('click', () => {
-            if (!isMainCustom) return;
+            if (!isMainCustom && !isStickersTab) return;
             if (_batchSelectedIndices.size === 0) return;
             _showBatchGroupPicker();
         });
@@ -554,6 +569,7 @@ function _renderModernToolbar() {
                         ));
                     }
                 }
+                _removeStickerFromGroups(deleted);
                 indices.forEach(i => stickerLibrary.splice(i, 1));
                 // 同步清理已删除条目的“屏蔽集合”
                 const dis = _getDisabledStickerItemsSet();
@@ -892,12 +908,40 @@ function _renderEmojiTab(list, itemsToRender) {
     }
 }
 
-function _renderStickerTab(list, itemsToRender) {
+// 表情包按分组筛选，同时保留每条在 stickerLibrary 里的真实下标。
+// 绝不能拿过滤后数组的下标去删/屏蔽——批量操作都按真实下标定位，错位会删错图。
+function _visibleStickerEntries(items) {
+    const ctx = _getGroupCtx('stickers');
+    const groups = ctx.groups || [];
+    let pool = items.map((item, i) => ({ item, realIndex: i }));
+    if (_activeGroupFilter === 'ungrouped') {
+        pool = pool.filter(e => !groups.some(g => Array.isArray(g.items) && g.items.includes(e.item)));
+    } else if (_activeGroupFilter !== null) {
+        const g = groups.find(x => x.id === _activeGroupFilter);
+        pool = pool.filter(e => g && Array.isArray(g.items) && g.items.includes(e.item));
+    }
+    return pool;
+}
+
+// 删除表情包时清掉全部分组里的该引用。只改 items，绝不调用 CloudMedia.delete
+// （移动分组也只走这里，云端对象只能由真正的删除入口去删）
+function _removeStickerFromGroups(srcList) {
+    try {
+        if (!Array.isArray(window.stickerGroups)) return;
+        window.stickerGroups.forEach(g => {
+            if (g && Array.isArray(g.items)) {
+                g.items = g.items.filter(s => srcList.indexOf(s) === -1);
+            }
+        });
+    } catch (e) {}
+}
+
+function _renderStickerTab(list, entries) {
     const disabledSet = _getDisabledStickerItemsSet();
-    itemsToRender.forEach((item, index) => {
+    entries.forEach(({ item, realIndex }) => {
         const div = document.createElement('div');
         const isDisabled = disabledSet.has(item);
-        const isSelected = _batchModeActive && _batchSelectedIndices.has(index);
+        const isSelected = _batchModeActive && _batchSelectedIndices.has(realIndex);
         div.className = `sticker-item${isDisabled ? ' sticker-disabled' : ''}${isSelected ? ' sticker-batch-selected' : ''}`;
         // 阶段三B：识别 oss:// 走懒加载
         const isCloud = typeof item === 'string' && item.indexOf('oss://') === 0;
@@ -915,8 +959,8 @@ function _renderStickerTab(list, itemsToRender) {
         div.addEventListener('click', () => {
             if (!_batchModeActive) return;
             if (currentMajorTab !== 'reply' || currentSubTab !== 'stickers') return;
-            if (isSelected) _batchSelectedIndices.delete(index);
-            else _batchSelectedIndices.add(index);
+            if (isSelected) _batchSelectedIndices.delete(realIndex);
+            else _batchSelectedIndices.add(realIndex);
             renderReplyLibrary();
         });
         div.querySelector('.sticker-delete-btn').addEventListener('click', async e => {
@@ -935,7 +979,8 @@ function _renderStickerTab(list, itemsToRender) {
                     disabledSet.delete(item);
                     _saveDisabledStickerItemsSet(disabledSet);
                 }
-                stickerLibrary.splice(index, 1);
+                _removeStickerFromGroups([item]);
+                stickerLibrary.splice(realIndex, 1);
                 _batchSelectedIndices.clear();
                 throttledSaveData();
                 renderReplyLibrary();
@@ -1054,12 +1099,7 @@ function _showGroupManager() {
                     <span style="width:12px;height:12px;border-radius:50%;background:${g.color||'#868E96'};flex-shrink:0;box-shadow:0 0 0 2px ${g.color||'#868E96'}30;"></span>
                     <span style="flex:1;font-size:13px;color:var(--text-primary);font-weight:600;">${g.name}</span>
                     <span style="font-size:11px;color:var(--text-secondary);">${(g.items||[]).filter(t=>sourceItems.includes(t)).length} 条</span>
-                    <button data-action="toggle" data-i="${i}" style="
-                        width:28px;height:28px;border-radius:8px;border:1px solid var(--border-color);
-                        background:${g.disabled ? 'var(--accent-color)' : 'transparent'};
-                        color:${g.disabled ? '#fff' : 'var(--text-secondary)'};
-                        cursor:pointer;display:flex;align-items:center;justify-content:center;
-                    " title="${g.disabled ? '启用' : '屏蔽'}">${g.disabled ? ICONS.eye : ICONS.eyeOff}</button>
+                    ${ctx.hideDisabled ? '' : '<button data-action="toggle" data-i="' + i + '" style="width:28px;height:28px;border-radius:8px;border:1px solid var(--border-color);background:' + (g.disabled ? 'var(--accent-color)' : 'transparent') + ';color:' + (g.disabled ? '#fff' : 'var(--text-secondary)') + ';cursor:pointer;display:flex;align-items:center;justify-content:center;" title="' + (g.disabled ? '启用' : '屏蔽') + '">' + (g.disabled ? ICONS.eye : ICONS.eyeOff) + '</button>'}
                     <button data-action="edit" data-i="${i}" style="
                         width:28px;height:28px;border-radius:8px;border:1px solid var(--border-color);
                         background:transparent;color:var(--text-secondary);cursor:pointer;
@@ -2503,11 +2543,64 @@ function initReplyLibraryListeners() {
         });
     }
 
+    // 上传前先选目标分组。只决定「新图进哪个组」，不碰 _activeGroupFilter（那是「看哪一组」）。
+    // 这里刻意不渲染任何缩略图：oss:// 不是浏览器可识别的协议，直接塞 img.src 会破图。
+    function _showStickerUploadGroupPicker() {
+        if (!window.stickerGroups) window.stickerGroups = [];
+        const groups = window.stickerGroups;
+        const overlay = _makeOverlay();
+        const panel = document.createElement('div');
+        panel.style.cssText = `
+            background:var(--secondary-bg);border-radius:22px;padding:22px;
+            width:92%;max-width:340px;max-height:80vh;
+            display:flex;flex-direction:column;gap:12px;
+            box-shadow:0 24px 80px rgba(0,0,0,.45);
+            animation:popIn 0.22s cubic-bezier(.34,1.56,.64,1);
+        `;
+        panel.innerHTML = `
+            <style>@keyframes popIn { from{opacity:0;transform:scale(.93)} to{opacity:1;transform:scale(1)} }</style>
+            <div style="font-size:15px;font-weight:700;color:var(--text-primary);">添加到哪个分组？</div>
+            <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;">
+                选好后打开文件选择器。之后也能在「批量管理 → 分组」里移动。
+            </div>
+            <div style="display:flex;flex-direction:column;gap:7px;overflow-y:auto;max-height:45vh;">
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border-radius:11px;border:1.5px solid var(--border-color);background:var(--primary-bg);">
+                    <input type="radio" name="sug" value="" checked style="accent-color:var(--accent-color);">
+                    <span style="font-size:13px;color:var(--text-secondary);">不分组</span>
+                </label>
+                ${groups.map(g => `
+                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border-radius:11px;border:1.5px solid var(--border-color);background:var(--primary-bg);">
+                        <input type="radio" name="sug" value="${g.id}" style="accent-color:${g.color || '#aaa'};">
+                        <span style="width:9px;height:9px;border-radius:50%;background:${g.color || '#aaa'};flex-shrink:0;"></span>
+                        <span style="flex:1;font-size:13px;color:var(--text-primary);font-weight:600;">${g.name}</span>
+                        <span style="font-size:11px;color:var(--text-secondary);">${(g.items || []).length} 张</span>
+                    </label>
+                `).join('')}
+            </div>
+            ${groups.length === 0 ? '<div style="font-size:12px;color:var(--text-secondary);">还没有分组，可先去工具栏「分组管理」新建。</div>' : ''}
+            <div style="display:flex;gap:10px;">
+                <button id="sug-cancel" style="flex:1;padding:11px;border:1.5px solid var(--border-color);border-radius:12px;background:none;color:var(--text-secondary);font-size:13px;cursor:pointer;font-family:var(--font-family);">取消</button>
+                <button id="sug-ok" style="flex:2;padding:11px;border:none;border-radius:12px;background:var(--accent-color);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font-family);">选择图片</button>
+            </div>
+        `;
+        overlay.appendChild(panel);
+        document.body.appendChild(overlay);
+        const clearTarget = () => { window._stickerUploadTargetGroupId = null; overlay.remove(); };
+        panel.querySelector('#sug-cancel').onclick = clearTarget;
+        overlay.addEventListener('click', e => { if (e.target === overlay) clearTarget(); });
+        panel.querySelector('#sug-ok').onclick = () => {
+            const checked = panel.querySelector('input[name="sug"]:checked');
+            window._stickerUploadTargetGroupId = (checked && checked.value !== '') ? parseInt(checked.value) : null;
+            overlay.remove();
+            document.getElementById('sticker-file-input')?.click();
+        };
+    }
+
     const addBtn = document.getElementById('add-custom-reply');
     if (addBtn) {
         addBtn.addEventListener('click', () => {
             if (currentSubTab === 'stickers') {
-                document.getElementById('sticker-file-input')?.click(); return;
+                _showStickerUploadGroupPicker(); return;
             }
             if (currentSubTab === 'emojis') {
                 const input = prompt('请输入要添加的 Emoji（支持组合表情）:');

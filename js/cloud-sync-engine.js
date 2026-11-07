@@ -78,7 +78,7 @@
         // 主题人设
         'partnerPersonas',
         // 贴纸库（文字索引，实际图片阶段三B处理）
-        'stickerLibrary', 'myStickerLibrary', 'myStickerGroups',
+        'stickerLibrary', 'myStickerLibrary', 'myStickerGroups', 'stickerGroups',
         // 陪伴日记文字
         'companionData', 'companionDiary',
         // 信件
@@ -329,6 +329,26 @@
                             return true;
                         });
                         payload.indexedDB[k] = sanitizedStickers;
+                        continue;
+                    }
+                    // 对方表情库分组：items 存的是同一批图片引用，必须走和 stickerLibrary
+                    // 完全相同的过滤。否则①本地 base64 会绕过保护进同步包，②库被过滤变短后
+                    // 分组里会残留「库里已不存在」的孤儿引用（计数虚高、点开空白）。
+                    // 用 '_stickerGroups' 精确匹配，避免误伤 myStickerGroups。
+                    if (k.indexOf('_stickerGroups') !== -1 && Array.isArray(v)) {
+                        payload.indexedDB[k] = v.map(function (g) {
+                            if (!g || typeof g !== 'object') return g;
+                            var copy = Object.assign({}, g);
+                            if (Array.isArray(copy.items)) {
+                                copy.items = copy.items.filter(function (item) {
+                                    if (typeof item !== 'string') return true;
+                                    if (item.indexOf('oss://') === 0) return true;
+                                    if (item.indexOf('data:image') === 0) return false;
+                                    return true;
+                                });
+                            }
+                            return copy;
+                        });
                         continue;
                     }
                     // 红包（outbox/inbox 记录里可能挂了表情包）：金额/祝福语/状态这些纯文字全部同步，

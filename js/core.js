@@ -453,7 +453,9 @@ const loadData = async () => {
             localforage.getItem(getStorageKey('customPokeGroups')),
             localforage.getItem(getStorageKey('customStatusGroups')),
             localforage.getItem(getStorageKey('customPeriodCare')),
-            localforage.getItem(getStorageKey('myStickerGroups'))
+            localforage.getItem(getStorageKey('myStickerGroups')),
+            // 对方表情库分组：只能追加到末尾！下面 getVal 是按序号取值的，插中间会整体错位
+            localforage.getItem(getStorageKey('stickerGroups'))
         ]);
         const getVal = (index) => results[index].status === 'fulfilled' ? results[index].value : null;
 
@@ -480,6 +482,7 @@ const loadData = async () => {
         const savedStatusGroups = getVal(20);
         const savedPeriodCare = getVal(21);
         const savedMyStickerGroups = getVal(22);
+        const savedStickerGroups = getVal(23);
 
         if (savedPartnerPersonas) partnerPersonas = savedPartnerPersonas;
 
@@ -552,6 +555,7 @@ const loadData = async () => {
         if (savedMyStickers) myStickerLibrary = savedMyStickers;
         if (savedMyStickerGroups) window.myStickerGroups = savedMyStickerGroups;
         else window.myStickerGroups = [];
+        window.stickerGroups = Array.isArray(savedStickerGroups) ? savedStickerGroups : [];
 
         // 迁移："我的表情库"以前是纯字符串数组（元素直接是图片地址），
         // 现在要支持分组，每一项需要有自己的身份（id）和归属（groupId），
@@ -849,6 +853,7 @@ const saveData = async () => {
         { key: 'stickerLibrary',         val: () => localforage.setItem(getStorageKey('stickerLibrary'), stickerLibrary) },
         { key: 'myStickerLibrary',       val: () => localforage.setItem(getStorageKey('myStickerLibrary'), myStickerLibrary) },
         { key: 'myStickerGroups',        val: () => localforage.setItem(getStorageKey('myStickerGroups'), window.myStickerGroups || []) },
+        { key: 'stickerGroups',          val: () => localforage.setItem(getStorageKey('stickerGroups'), window.stickerGroups || []) },
         { key: 'customThemes',           val: () => localforage.setItem(`${APP_PREFIX}customThemes`, customThemes) },
         { key: 'themeSchemes',           val: () => localforage.setItem(`${APP_PREFIX}themeSchemes`, themeSchemes) },
         { key: 'chatMessages',           val: () => localforage.setItem(getStorageKey('chatMessages'), messages) },
