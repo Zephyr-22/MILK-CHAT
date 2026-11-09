@@ -39,17 +39,26 @@
             times: [10,20,30,60,'rest'],
             inviteTimes: [30, 60, 'rest'],
         },
+        // 共感陪伴：只能由梦角发起邀请，不给「我」做入口；时长由我在邀请弹窗里输入
+        resonance: {
+            label: '一起入梦',
+            icon:  'fa-wand-sparkles',
+            hint:  '',
+            times: [],
+            inviteTimes: [],
+            inviteOnly: true,
+        },
     };
 
     // ─── 运行时状态 ──────────────────────────────────────────────────────────
 
     let companionData = {
-        backgrounds: { study: [], work: [], exercise: [], sleep: [] },
-        voices:      { study: [], work: [], exercise: [], sleep: [] },
-        noises:      { study: [], work: [], exercise: [], sleep: [] },
-        selectedBg:  { study: null, work: null, exercise: null, sleep: null }, // 选中的背景 id
-        lastNoiseChoice: { study: null, work: null, exercise: null, sleep: null },
-        lastPlayMode:    { study: 'single', work: 'single', exercise: 'single', sleep: 'single' },
+        backgrounds: { study: [], work: [], exercise: [], sleep: [], resonance: [] },
+        voices:      { study: [], work: [], exercise: [], sleep: [], resonance: [] },
+        noises:      { study: [], work: [], exercise: [], sleep: [], resonance: [] },
+        selectedBg:  { study: null, work: null, exercise: null, sleep: null, resonance: null }, // 选中的背景 id
+        lastNoiseChoice: { study: null, work: null, exercise: null, sleep: null, resonance: null },
+        lastPlayMode:    { study: 'single', work: 'single', exercise: 'single', sleep: 'single', resonance: 'single' },
         history: []
     };
 
@@ -71,12 +80,12 @@
 
     function _emptyData() {
         return {
-            backgrounds: { study: [], work: [], exercise: [], sleep: [] },
-            voices:      { study: [], work: [], exercise: [], sleep: [] },
-            noises:      { study: [], work: [], exercise: [], sleep: [] },
-            selectedBg:  { study: null, work: null, exercise: null, sleep: null },
-            lastNoiseChoice: { study: null, work: null, exercise: null, sleep: null },
-            lastPlayMode:    { study: 'single', work: 'single', exercise: 'single', sleep: 'single' },
+            backgrounds: { study: [], work: [], exercise: [], sleep: [], resonance: [] },
+            voices:      { study: [], work: [], exercise: [], sleep: [], resonance: [] },
+            noises:      { study: [], work: [], exercise: [], sleep: [], resonance: [] },
+            selectedBg:  { study: null, work: null, exercise: null, sleep: null, resonance: null },
+            lastNoiseChoice: { study: null, work: null, exercise: null, sleep: null, resonance: null },
+            lastPlayMode:    { study: 'single', work: 'single', exercise: 'single', sleep: 'single', resonance: 'single' },
             history: []
         };
     }
@@ -261,7 +270,7 @@
                     <span>陪伴</span>
                 </div>
                 <div id="companion-cards-wrap" style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;padding:6px 4px;">
-                    ${Object.entries(MODES).map(([key, cfg]) => `
+                    ${Object.entries(MODES).filter(([, cfg]) => !cfg.inviteOnly).map(([key, cfg]) => `
                         <div class="companion-mode-card-dyn" data-mode="${key}" style="
                             background:var(--primary-bg, #fafafa);border-radius:14px;padding:22px 12px;cursor:pointer;
                             border:1px solid var(--border-color, rgba(0,0,0,0.06));
@@ -384,7 +393,17 @@
         work:  ['一起加油工作吧', '可以陪我一起工作吗？'],
         exercise: ['一起活动一下？', '我想锻炼了，陪我一会？'],
         sleep: ['困了，陪我睡觉好吗？', '一起入睡吧'],
+        // 共感陪伴：全天可弹，故不带「困了 / 睡觉 / 晚安」等睡眠暗示
+        resonance: ['想和你待一会儿', '这一段，留给我好吗？', '什么都不用做，陪我一会儿', '要不要一起入梦？'],
     };
+
+    // 共感陪伴页上方的台词（只在陪伴页循环，不进邀请词、不写字卡库、不进日记）
+    const RESONANCE_LINES = [
+        '别说话，我在听你呼吸',
+        '嘘，我正在感受你',
+        '闭眼，把你的感受交给我',
+        '你的反应，一分一毫，我都会收下',
+    ];
 
     // ─── 过渡画面文案库（梦角第一人称）──────────────────────────────────────
     const TRANSITION_LINES = {
@@ -498,6 +517,8 @@
 
     // 用户点场景卡 → 先让用户选时间 → 选完后再发起邀请
     async function selectMode(mode) {
+        // 共感陪伴只能由梦角发起，不给「我」做入口（兜底，防止绕过模式卡）
+        if (MODES[mode] && MODES[mode].inviteOnly) return;
         currentMode = mode;
         window._companionSessionInitiator = 'user'; // 用户主动发起
         closeCompanionModal();
@@ -677,6 +698,21 @@
         clearTimeout(window._invitingTimer);
     }
 
+    // 移动端软键盘弹起 / 收起时把时长输入框滚回可见区域。
+    // 全局只绑一次（不随邀请弹窗反复创建/解绑），handler 里靠 isConnected + activeElement 自失效。
+    let _resonanceVvBound = false;
+    function bindResonanceViewport() {
+        if (_resonanceVvBound || !window.visualViewport) return;
+        _resonanceVvBound = true;
+        try {
+            window.visualViewport.addEventListener('resize', () => {
+                const input = document.getElementById('resonance-minutes-input');
+                if (!input || !input.isConnected || input !== document.activeElement) return;
+                try { input.scrollIntoView({ block: 'center' }); } catch (e) {}
+            });
+        } catch (e) {}
+    }
+
     // ─── 梦角主动邀请 UI ────────────────────────────────────────────────────
 
     async function showIncomingCompanion(mode) {
@@ -702,28 +738,34 @@
         }
         currentMode = mode;
         const cfg = MODES[mode];
+        const isResonance = mode === 'resonance';
         const partnerName = getPartnerName();
         const avSrc = getPartnerAvatarSrc();
         const baseLine = pickRandom(INVITE_LINES[mode] || INVITE_LINES.study);
 
-        // 梦角自选时间（从 inviteTimes 池里随机选一个）
-        const inviteTime = pickRandom(cfg.inviteTimes || [25]);
+        // 共感陪伴：时长由「我」在弹窗里输入，不参与拼接。
+        // 它设了 inviteTimes: []，若走下面的 pickRandom 会得到 undefined → 拼出「陪你 undefined 分钟」。
+        let inviteTime = null;
+        let line = baseLine;
+        if (!isResonance) {
+            // 梦角自选时间（从 inviteTimes 池里随机选一个）
+            inviteTime = pickRandom(cfg.inviteTimes || [25]);
 
-        // 拼接邀请文案：智能处理"陪你"是否已经在台词里 + rest 特殊处理
-        let line;
-        if (inviteTime === 'rest') {
-            // 睡觉的"好好休息"模式：单独一句更自然
-            line = '陪你一起睡到自然醒吧';
-        } else {
-            const timeText = `${inviteTime} 分钟`;
-            // 台词里已经有"陪你"/"陪着你" → 直接加时间
-            // 没有 → 末尾是问号/感叹号则直接加" 陪你 XX"，否则加"，陪你 XX"
-            if (/陪你|陪着你/.test(baseLine)) {
-                line = `${baseLine} ${timeText}`;
-            } else if (/[？！?!]$/.test(baseLine)) {
-                line = `${baseLine} 陪你 ${timeText}`;
+            // 拼接邀请文案：智能处理"陪你"是否已经在台词里 + rest 特殊处理
+            if (inviteTime === 'rest') {
+                // 睡觉的"好好休息"模式：单独一句更自然
+                line = '陪你一起睡到自然醒吧';
             } else {
-                line = `${baseLine}，陪你 ${timeText}`;
+                const timeText = `${inviteTime} 分钟`;
+                // 台词里已经有"陪你"/"陪着你" → 直接加时间
+                // 没有 → 末尾是问号/感叹号则直接加" 陪你 XX"，否则加"，陪你 XX"
+                if (/陪你|陪着你/.test(baseLine)) {
+                    line = `${baseLine} ${timeText}`;
+                } else if (/[？！?!]$/.test(baseLine)) {
+                    line = `${baseLine} 陪你 ${timeText}`;
+                } else {
+                    line = `${baseLine}，陪你 ${timeText}`;
+                }
             }
         }
 
@@ -732,8 +774,8 @@
 
         const overlay = document.createElement('div');
         overlay.id = 'companion-incoming-overlay';
-        // 把时间存到 dataset 上，接受按钮可以拿到
-        overlay.dataset.inviteTime = inviteTime;
+        // 把时间存到 dataset 上，接受按钮可以拿到（共感由输入框供值，不写）
+        if (!isResonance) overlay.dataset.inviteTime = inviteTime;
         overlay.dataset.inviteMode = mode;
         overlay.setAttribute('style', [
             'position:fixed', 'inset:0', 'z-index:99998',
@@ -771,7 +813,21 @@
                     <i class="fas ${cfg.icon}" style="color:var(--accent-color, #c5a47e);font-size:18px;"></i>
                     <span style="font-size:14px;">"${line}"</span>
                 </div>
-                <div style="display:flex;gap:44px;margin-top:26px;">
+                ${isResonance ? `
+                <div style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:2px;width:min(80vw,280px);">
+                    <div style="font-size:12px;color:rgba(255,255,255,.62);letter-spacing:1px;">想一起待多久</div>
+                    <div style="display:flex;align-items:center;gap:10px;width:100%;">
+                        <input id="resonance-minutes-input" type="number" inputmode="numeric" min="1" max="480" step="1"
+                            placeholder="输入分钟数" autocomplete="off"
+                            style="flex:1;min-width:0;box-sizing:border-box;padding:10px 14px;border-radius:12px;
+                                border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.08);
+                                color:#fff;font-size:14px;outline:none;text-align:center;">
+                        <span style="font-size:12px;color:rgba(255,255,255,.55);white-space:nowrap;">分钟</span>
+                    </div>
+                    <div id="resonance-minutes-hint" style="min-height:16px;font-size:11px;color:rgba(255,180,180,.9);line-height:16px;"></div>
+                </div>
+                ` : ''}
+                <div style="display:flex;gap:44px;margin-top:${isResonance ? '10px' : '26px'};">
                     <button id="companion-incoming-reject" style="
                         display:flex;flex-direction:column;align-items:center;gap:7px;
                         background:none;border:none;cursor:pointer;color:#fff;
@@ -805,13 +861,49 @@
         injectKeyframes();
         document.documentElement.appendChild(overlay);
 
+        // 共感陪伴：时长由「我」输入。提示行常驻占位避免跳版，不用 alert / toast / showNotification
+        const minutesInput = isResonance ? overlay.querySelector('#resonance-minutes-input') : null;
+        const minutesHint  = isResonance ? overlay.querySelector('#resonance-minutes-hint') : null;
+        function validateResonanceMinutes() {
+            const raw = (minutesInput && minutesInput.value ? String(minutesInput.value) : '').trim();
+            const n = Number(raw);
+            let msg = '', ok = false;
+            if (raw === '' || !Number.isFinite(n)) msg = '请输入数字';
+            else if (!Number.isInteger(n)) msg = '请填整数';
+            else if (n <= 0) msg = '至少 1 分钟';
+            else if (n > 480) msg = '最多 480 分钟';
+            else ok = true;
+            if (minutesHint) minutesHint.textContent = ok ? '' : msg;
+            return ok ? n : null;
+        }
+        if (minutesInput) {
+            minutesInput.addEventListener('input', () => {
+                if (minutesHint) minutesHint.textContent = '';
+            });
+            minutesInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const n = validateResonanceMinutes();
+                    if (n !== null) overlay.querySelector('#companion-incoming-accept').click();
+                }
+            });
+            // 移动端键盘弹起时尽量让输入框可见；不自动 focus，避免一进来就弹键盘
+            minutesInput.addEventListener('focus', () => {
+                bindResonanceViewport();
+                setTimeout(() => {
+                    try { if (minutesInput.isConnected) minutesInput.scrollIntoView({ block: 'center' }); } catch (e) {}
+                }, 250);
+            });
+        }
+
         // 播放邀请音效（按 mode 选择）
         try {
             const soundMap = {
                 study: 'invite_study',
                 work: 'invite_work',
                 exercise: 'invite_exercise',
-                sleep: 'invite_sleep'
+                sleep: 'invite_sleep',
+                resonance: 'invite_sleep'   // 共感复用睡觉音效，气质最近且用户自定义音效自动生效
             };
             const soundType = soundMap[mode];
             if (soundType && typeof playSound === 'function') {
@@ -831,7 +923,14 @@
         } catch (e) { console.warn('[companion] invite notification error:', e); }
 
         // 60 秒未接听自动消失 → 错过（不走过渡画面）
-        const autoTimer = setTimeout(() => {
+        // 共感陪伴：用户正在输入时长时不能判「错过」，顺延 60 秒（A 的四场景行为不变）
+        let autoTimer;
+        const onInviteTimeout = () => {
+            if (isResonance && minutesInput && minutesInput.isConnected
+                && (minutesInput === document.activeElement || String(minutesInput.value || '').trim() !== '')) {
+                autoTimer = setTimeout(onInviteTimeout, 60000);
+                return;
+            }
             if (!overlay.isConnected) return; // 已被其他操作移除了
             try { if (typeof window.stopCurrentSound === 'function') window.stopCurrentSound(); } catch(e) {}
             overlay.remove();
@@ -856,7 +955,8 @@
                     });
                 }
             } catch(e) { console.warn('[companion] missed diary entry error:', e); }
-        }, 60000);
+        };
+        autoTimer = setTimeout(onInviteTimeout, 60000);
 
         // 拒绝
         overlay.querySelector('#companion-incoming-reject').addEventListener('click', () => {
@@ -871,12 +971,19 @@
 
         // 接受 → 过渡画面 → 进入陪伴页
         overlay.querySelector('#companion-incoming-accept').addEventListener('click', () => {
+            // 共感：先校验时长，非法则只显示提示行、不关闭弹窗
+            let finalTime = inviteTime;
+            if (isResonance) {
+                const n = validateResonanceMinutes();
+                if (n === null) return;
+                finalTime = n;
+            }
             clearTimeout(autoTimer);
             try { if (typeof window.stopCurrentSound === 'function') window.stopCurrentSound(); } catch(e) {}
             if (overlay.isConnected) overlay.remove();
             // 过渡画面：「我在等你……」
             showCompanionTransition(pickRandom(TRANSITION_LINES.partnerInviteAccept), () => {
-                enterWithInviteTime(mode, inviteTime);
+                enterWithInviteTime(mode, finalTime);
             });
         });
     }
@@ -1553,6 +1660,58 @@
         openCompanionPage();
     };
 
+    // ─── 共感陪伴（入梦）纯净页 ─────────────────────────────────────────────
+    // 不改 companion.css（69 处 !important、高特异性选择器），改为进入时把陪伴页
+    // 其余子元素用 inline !important 收起，退出时原样恢复（只动我们标记过的元素）。
+    // 白名单：#resonance-layer 自身 + #companion-exit-confirm（它在 page 内，藏了点 × 无反应）。
+
+    const RESONANCE_KEEP_VISIBLE = ['resonance-layer', 'companion-exit-confirm'];
+    let _resonanceIterCount = 0;
+    let _resonanceLineIdx = 0;
+
+    function applyResonancePage(on) {
+        const page = $('companion-page');
+        if (!page) return;
+        if (on) {
+            page.classList.add('resonance-mode');
+            page.classList.remove('companion-light-bg');
+            Array.from(page.children).forEach(el => {
+                if (RESONANCE_KEEP_VISIBLE.indexOf(el.id) !== -1) return;
+                if (el.dataset.resonanceHidden === '1') return;
+                // 记下原本的 inline display（含优先级），退出时精确还原
+                el.dataset.resonancePrevDisplay = el.style.getPropertyValue('display');
+                el.dataset.resonancePrevPriority = el.style.getPropertyPriority('display');
+                el.dataset.resonanceHidden = '1';
+                el.style.setProperty('display', 'none', 'important');
+            });
+            _resonanceIterCount = 0;
+            _resonanceLineIdx = 0;
+            const lineEl = $('resonance-line');
+            if (lineEl) lineEl.textContent = RESONANCE_LINES[0];
+        } else {
+            page.classList.remove('resonance-mode');
+            Array.from(page.children).forEach(el => {
+                if (el.dataset.resonanceHidden === '1') {
+                    const prev = el.dataset.resonancePrevDisplay || '';
+                    if (prev) {
+                        el.style.setProperty('display', prev, el.dataset.resonancePrevPriority || '');
+                    } else {
+                        el.style.removeProperty('display');
+                    }
+                    delete el.dataset.resonanceHidden;
+                    delete el.dataset.resonancePrevDisplay;
+                    delete el.dataset.resonancePrevPriority;
+                }
+            });
+        }
+    }
+
+    // 供 core.js 自动发送心跳判据用：共感陪伴中不主动打扰
+    window._isResonanceCompanionActive = function () {
+        return currentMode === 'resonance'
+            && !!document.getElementById('companion-page')?.classList.contains('active');
+    };
+
     // ─── 陪伴页面 ────────────────────────────────────────────────────────────
 
     function openCompanionPage(opts) {
@@ -1592,7 +1751,8 @@
         // 初始化计时器显示
         updateTimerDisplay();
 
-        // 显示页面
+        // 显示页面（共感陪伴切换到纯净页；其它场景顺带恢复，幂等）
+        applyResonancePage(currentMode === 'resonance');
         page.classList.add('active');
         document.body.style.overflow = 'hidden';
 
@@ -1734,6 +1894,7 @@
         // 停止白噪音
         stopNoise();
 
+        applyResonancePage(false);
         $('companion-page').classList.remove('active');
         document.body.style.overflow = '';
         closeSettingsPanel();
@@ -2487,7 +2648,10 @@
     function startTimer() {
         clearInterval(timerInterval);
         // 启动场景对应的事件检查
-        if (currentMode === 'sleep' && !isCountdown) {
+        // 共感陪伴：他不主动打扰，不启动「梦角提前离开」检查（那会弹全屏告别浮层）
+        if (currentMode === 'resonance') {
+            // no-op
+        } else if (currentMode === 'sleep' && !isCountdown) {
             // 正计时（好好休息）→ 启动梦角主动告别检查
             schedulePartnerGoodnight();
         } else {
@@ -2672,6 +2836,16 @@
 
         // 正计时（睡觉好好休息）不会到这里，因为不归零。但兜底防御一下。
         if (!isCountdown) return;
+
+        // 共感陪伴：时间到自动结束，不续。过渡盖住屏幕时悄悄关闭陪伴页，
+        // 复用站点既有的「悄悄关闭」手法，纯净页不会在渐出后闪一下。
+        if (currentMode === 'resonance') {
+            showCompanionTransition(pickRandom(TRANSITION_LINES.timeUp), null, () => {
+                if (!document.getElementById('companion-page')?.classList.contains('active')) return;
+                closeCompanionPage();
+            });
+            return;
+        }
 
         // 倒计时归零 → 过渡画面 → 抛骰子决定谁先发起延长邀请
         showCompanionTransition(pickRandom(TRANSITION_LINES.timeUp), () => {
@@ -3021,6 +3195,8 @@
 
     // 点击空白区域 → 触发梦角字卡回复（模拟用户碰了一下梦角，但不写入用户消息）
     function handlePageClick(e) {
+        // 共感陪伴：纯净页无触碰反馈、无字卡，直接不响应
+        if (currentMode === 'resonance') return;
         // 排除按钮、计时器区域、退出确认弹窗、语音气泡的点击
         if (e.target.closest('button, input, #companion-timer-area, #companion-exit-confirm, .companion-bubble-voice')) return;
         // 涟漪特效（始终响应）
@@ -4286,6 +4462,29 @@
     // ─── 初始化：绑定所有事件 ────────────────────────────────────────────────
 
     function bindEvents() {
+        // 共感陪伴纯净页：极淡退出角标 + 台词每 3 个呼吸轮换（不新起定时器）
+        const resonanceExit = $('resonance-exit-btn');
+        if (resonanceExit) {
+            resonanceExit.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showExitConfirm();   // 复用 A 既有的「现在就要走了吗？」确认链路
+            });
+        }
+        const resonanceOrb = $('resonance-orb-big');
+        if (resonanceOrb) {
+            resonanceOrb.addEventListener('animationiteration', (e) => {
+                // 外晕是 ::before 上的另一条动画，事件会冒泡到宿主圆；只认本体的呼吸动画，
+                // 否则每个周期会计 2 次，24 秒轮换会变成 12 秒。
+                if (e.animationName && e.animationName !== 'resonanceOrbBig') return;
+                if (currentMode !== 'resonance') return;
+                _resonanceIterCount++;
+                if (_resonanceIterCount % 3 !== 0) return;
+                _resonanceLineIdx = (_resonanceLineIdx + 1) % RESONANCE_LINES.length;
+                const lineEl = $('resonance-line');
+                if (lineEl) lineEl.textContent = RESONANCE_LINES[_resonanceLineIdx];
+            });
+        }
+
         // 顶部按钮 —— 用事件委托，无论按钮何时出现都能响应
         document.addEventListener('click', function (e) {
             const btn = e.target.closest && e.target.closest('#companion-btn');

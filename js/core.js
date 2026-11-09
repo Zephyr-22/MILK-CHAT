@@ -1062,6 +1062,8 @@ function manageAutoSendTimer() {
         
         autoSendTimer = setInterval(() => {
             if (!document.body.classList.contains('batch-favorite-mode')) {
+                // 共感陪伴（入梦）中：他不主动打扰，跳过自动发送心跳
+                if (typeof window._isResonanceCompanionActive === 'function' && window._isResonanceCompanionActive()) return;
                 // 动作模块可以接管这次心跳：返回 true 表示这次改发动作（它自己会补一句话），
                 // 这里就不再发普通消息。主动动作因此没有独立定时器，跟主动发送共用一条时间线。
                 if (typeof window._onAutoSendTick === 'function' && window._onAutoSendTick() === true) return;

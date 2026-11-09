@@ -30,7 +30,8 @@
         study:    { name: '学习', shortName: '学习', icon: 'fa-book-open',  sticker: '🌿' },
         work:     { name: '工作', shortName: '工作', icon: 'fa-briefcase',  sticker: '☕' },
         exercise: { name: '运动', shortName: '运动', icon: 'fa-running',    sticker: '☀️' },
-        sleep:    { name: '睡觉', shortName: '睡觉', icon: 'fa-moon',       sticker: '🌙' }
+        sleep:    { name: '睡觉', shortName: '睡觉', icon: 'fa-moon',       sticker: '🌙' },
+        resonance:{ name: '入梦', shortName: '入梦', icon: 'fa-wand-sparkles', sticker: '✦' }
     };
 
     // ─── 存储 ───────────────────────────────────────
@@ -585,6 +586,7 @@
             work:     '工作',
             exercise: '运动',
             sleep:    '睡觉',
+            resonance: '入梦',
             partner:  getPartnerName() + '邀请',
             user:     getUserName() + '邀请',
             missed:   getUserName() + '错过了'
@@ -672,7 +674,7 @@
         });
 
         // 种类（仅正常记录）
-        const modeCnt = { study: 0, work: 0, exercise: 0, sleep: 0 };
+        const modeCnt = { study: 0, work: 0, exercise: 0, sleep: 0, resonance: 0 };
         normalEntries.forEach(e => {
             if (modeCnt.hasOwnProperty(e.mode)) modeCnt[e.mode]++;
         });
@@ -689,7 +691,8 @@
             study:    '#C3EB8E',   // 学习 - 嫩绿
             work:     '#FFF891',   // 工作 - 鹅黄
             exercise: '#FFBB9B',   // 运动 - 蜜桃橙
-            sleep:    '#A4D6FF'    // 睡觉 - 浅蓝
+            sleep:    '#A4D6FF',   // 睡觉 - 浅蓝
+            resonance: '#C9B8E8'   // 入梦 - 浅紫
         };
 
         // 邀请来源图（含错过）
@@ -707,7 +710,8 @@
             { label: '学习', value: modeCnt.study,    color: modeColors.study },
             { label: '工作', value: modeCnt.work,     color: modeColors.work },
             { label: '运动', value: modeCnt.exercise, color: modeColors.exercise },
-            { label: '睡觉', value: modeCnt.sleep,    color: modeColors.sleep }
+            { label: '睡觉', value: modeCnt.sleep,    color: modeColors.sleep },
+            { label: '入梦', value: modeCnt.resonance, color: modeColors.resonance }
         ];
         drawPie('cd-pie-mode', modeData, totalCount);
         renderLegend('cd-legend-mode', modeData, totalCount);

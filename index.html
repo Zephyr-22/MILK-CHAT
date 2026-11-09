@@ -79,6 +79,30 @@
 /* 深色模式下过渡动效换成深色背景，跟随系统 data-theme="dark"，不改动上面浅色模式那行原有代码 */
 html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle at 50% 36%,rgba(45,45,45,.95),rgba(30,30,30,.9) 30%,rgba(18,18,18,.98) 72%),#121212;}
 </style>
+<style id="resonance-layer-style">
+/* 共感陪伴（入梦）纯净页：独立命名空间，零改 companion.css */
+#resonance-layer{display:none;position:absolute;inset:0;z-index:3;background:#141014;align-items:center;justify-content:center;flex-direction:column;overflow:hidden;}
+#companion-page.resonance-mode #resonance-layer{display:flex;}
+#resonance-line{position:relative;z-index:2;margin-bottom:56px;padding:0 24px;max-width:82vw;text-align:center;color:#e6dfe0;font-size:15px;letter-spacing:2px;line-height:1.9;opacity:.42;animation:resonanceLine 8s ease-in-out infinite;}
+#resonance-stage{position:relative;width:260px;height:180px;}
+.resonance-orb{position:absolute;top:50%;left:50%;border-radius:50%;isolation:isolate;}
+.resonance-orb::before{content:'';position:absolute;inset:-22px;border-radius:50%;background:radial-gradient(circle,currentColor 0%,transparent 70%);pointer-events:none;z-index:-1;}
+#resonance-orb-big{width:88px;height:88px;margin:-44px 0 0 -44px;background:#4a141d;color:#5a1a24;animation:resonanceOrbBig 8s ease-in-out infinite;}
+#resonance-orb-big::before{animation:resonanceHaloBig 8s ease-in-out infinite;}
+#resonance-orb-small{width:52px;height:52px;margin:-26px 0 0 -26px;background:#b7c1ee;color:#56618f;animation:resonanceOrbSmall 8s ease-in-out infinite;}
+#resonance-orb-small::before{animation:resonanceHaloSmall 8s ease-in-out infinite;}
+.resonance-ripple{position:absolute;left:calc(50% + 12px);top:50%;width:180px;height:180px;border-radius:50%;border:1px solid rgba(183,193,238,.55);pointer-events:none;animation:resonanceRipple 8s ease-in-out infinite;}
+.resonance-ripple-2{border-color:rgba(183,193,238,.3);animation-delay:.35s;}
+#resonance-exit-btn{position:absolute;top:22px;right:22px;width:40px;height:40px;border:none;background:none;color:#e6dfe0;font-size:20px;opacity:.22;cursor:pointer;z-index:4;transition:opacity .25s ease;}
+#resonance-exit-btn:hover{opacity:.6;}
+@keyframes resonanceOrbBig{0%,100%{transform:translateX(-30px) scale(1);opacity:.7;}50%{transform:translateX(-21px) scale(1.14);opacity:1;}}
+@keyframes resonanceOrbSmall{0%,100%{transform:translateX(40px) scale(1);opacity:.5;}50%{transform:translateX(29px) scale(1.14);opacity:1;}}
+@keyframes resonanceHaloBig{0%,100%{opacity:.18;}50%{opacity:.4;}}
+@keyframes resonanceHaloSmall{0%,100%{opacity:.1;}50%{opacity:.26;}}
+@keyframes resonanceLine{0%,100%{opacity:.42;}50%{opacity:1;}}
+@keyframes resonanceRipple{0%,42%{transform:translate(-50%,-50%) scale(.17);opacity:0;}50%{transform:translate(-50%,-50%) scale(.3);opacity:.55;}74%,100%{transform:translate(-50%,-50%) scale(1);opacity:0;}}
+@media(prefers-reduced-motion:reduce){#resonance-layer *,#resonance-orb-big::before,#resonance-orb-small::before{animation:none!important;}#resonance-line{opacity:.8;}#resonance-orb-big{transform:translateX(-25px) scale(1.07);opacity:.85;}#resonance-orb-small{transform:translateX(34px) scale(1.07);opacity:.75;}#resonance-orb-big::before{opacity:.3;}#resonance-orb-small::before{opacity:.18;}.resonance-ripple{opacity:0;}}
+</style>
 </head>
 <body>
 <div id="splash-declaration">
@@ -1455,6 +1479,18 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
                     <button id="exit-confirm-yes" class="modal-btn modal-btn-primary">下次见</button>
                 </div>
             </div>
+        </div>
+
+        <!-- ✦ 共感陪伴（入梦）纯净页：只在他发起邀请时出现，无计时器 / 输入 / 触碰反馈 ✦ -->
+        <div id="resonance-layer">
+            <div id="resonance-line">别说话，我在听你呼吸</div>
+            <div id="resonance-stage">
+                <div class="resonance-ripple resonance-ripple-1"></div>
+                <div class="resonance-ripple resonance-ripple-2"></div>
+                <div class="resonance-orb" id="resonance-orb-big"></div>
+                <div class="resonance-orb" id="resonance-orb-small"></div>
+            </div>
+            <button id="resonance-exit-btn" aria-label="结束入梦"><i class="fas fa-xmark"></i></button>
         </div>
     </div>
 
@@ -3581,6 +3617,7 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
                         <div class="cd-dropdown-item" data-val="work">工作</div>
                         <div class="cd-dropdown-item" data-val="exercise">运动</div>
                         <div class="cd-dropdown-item" data-val="sleep">睡觉</div>
+                        <div class="cd-dropdown-item" data-val="resonance">入梦</div>
                     </div>
                 </div>
                 <div class="cd-chip" id="cd-chip-init">
