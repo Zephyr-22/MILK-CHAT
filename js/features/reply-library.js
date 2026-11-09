@@ -15,6 +15,11 @@ function _getGroupCtx(tab) {
         if (!window.customStatusGroups) window.customStatusGroups = [];
         return { groups: window.customStatusGroups, items: customStatuses, itemLabel: '状态' };
     }
+    // Emoji 库没有分组。返回空 groups，否则批量弹窗会默认拿到字卡分组，
+    // 把新增的 Emoji 写进 customReplyGroups[].items 里（字卡分组被污染）。
+    if (tab === 'emojis') {
+        return { groups: [], items: customEmojis, itemLabel: 'Emoji' };
+    }
     // 对方表情库：stickerLibrary 是纯字符串数组，不能对象化，所以归属关系
     // 照抄字卡分组——存在分组自己的 items 里，而不是每个条目上。
     if (tab === 'stickers') {
@@ -894,10 +899,19 @@ function _renderEmojiTab(list, itemsToRender) {
             const div = document.createElement('div');
             div.className = 'emoji-item';
             div.style.position = 'relative';
-            div.innerHTML = `<span style="pointer-events:none;">${item}</span><span class="emoji-custom-del" style="position:absolute;top:-4px;right:-4px;font-size:10px;background:var(--text-secondary);color:#fff;border-radius:50%;width:14px;height:14px;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity 0.2s;">×</span>`;
-            div.addEventListener('mouseenter', () => div.querySelector('.emoji-custom-del').style.opacity = '1');
-            div.addEventListener('mouseleave', () => div.querySelector('.emoji-custom-del').style.opacity = '0');
-            div.querySelector('.emoji-custom-del').addEventListener('click', e => {
+            // 批量添加入口会带进任意文本，这里必须用 textContent 而不是 innerHTML 拼模板
+            const face = document.createElement('span');
+            face.style.pointerEvents = 'none';
+            face.textContent = item;
+            const del = document.createElement('span');
+            del.className = 'emoji-custom-del';
+            del.style.cssText = 'position:absolute;top:-4px;right:-4px;font-size:10px;background:var(--text-secondary);color:#fff;border-radius:50%;width:14px;height:14px;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity 0.2s;';
+            del.textContent = '×';
+            div.appendChild(face);
+            div.appendChild(del);
+            div.addEventListener('mouseenter', () => del.style.opacity = '1');
+            div.addEventListener('mouseleave', () => del.style.opacity = '0');
+            del.addEventListener('click', e => {
                 e.stopPropagation();
                 customEmojis.splice(idx, 1);
                 throttledSaveData();
@@ -2196,6 +2210,38 @@ function _playDrawReveal(panel, deck, keptCount, missedCount) {
     });
 }
 
+// 批量添加 Emoji：默认「每行一条」；若某一行是连续的一串 Emoji，则按可视字素拆成多条。
+// 复用 core.js 的 _isPureEmoji() 判断整行是否纯 Emoji，Intl.Segmenter 保证组合表情
+// （🙂‍↕️、👍🏻、❤️‍🔥、🇨🇳）不会被拆碎。没有 Segmenter 的老浏览器退化为「每行一条」。
+// 混入普通文字的行整行保留，不做拆分，避免把文案切碎。
+function _expandEmojiBatchLines(lines) {
+    if (typeof _isPureEmoji !== 'function') return lines;
+    let segmenter = null;
+    try {
+        if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+            segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+        }
+    } catch (e) {}
+    if (!segmenter) return lines;
+    const out = [];
+    lines.forEach(line => {
+        const compact = line.replace(/\s/g, '');
+        if (!_isPureEmoji(compact)) { out.push(line); return; }
+        const units = [...segmenter.segment(compact)]
+            .map(x => x.segment)
+            .filter(g => g.trim() && !/^[\u200D\uFE0F\u20E3]+$/.test(g));
+        if (units.length <= 1) { out.push(line); return; }
+        units.forEach(g => out.push(g));
+    });
+    return out;
+}
+
+// 弹窗计数与实际提交必须走同一个解析，否则「显示 3 条、实际加了 12 条」
+function _parseBatchLines(text) {
+    const lines = String(text).split('\n').map(l => l.trim()).filter(Boolean);
+    return currentSubTab === 'emojis' ? _expandEmojiBatchLines(lines) : lines;
+}
+
 function _showBatchAddDialog() {
     const ctx = _getGroupCtx();
     const groups = ctx.groups;
@@ -2233,10 +2279,10 @@ function _showBatchAddDialog() {
             @keyframes baGroupSlide { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
         </style>
         <div style="flex-shrink:0;font-size:16px;font-weight:700;color:var(--text-primary);margin-bottom:6px;">批量添加${getCategoryName(currentSubTab)}</div>
-        <div style="flex-shrink:0;font-size:12px;color:var(--text-secondary);margin-bottom:14px;line-height:1.6;">每行一条，自动去重</div>
+        <div style="flex-shrink:0;font-size:12px;color:var(--text-secondary);margin-bottom:14px;line-height:1.6;">${currentSubTab === 'emojis' ? '每行一条；连续一串 Emoji 会自动拆开（组合表情不会被拆碎），自动去重' : '每行一条，自动去重'}</div>
 
         <div style="flex:1;overflow-y:auto;overflow-x:hidden;min-height:0;">
-            <textarea id="batch-add-input" rows="10" placeholder="在此粘贴内容，每行一条…" style="
+            <textarea id="batch-add-input" rows="10" placeholder="${currentSubTab === 'emojis' ? '每行一条，或直接粘贴一整串 Emoji…' : '在此粘贴内容，每行一条…'}" style="
                 width:100%;box-sizing:border-box;padding:12px 14px;
                 border:1.5px solid var(--border-color);border-radius:13px;
                 background:var(--primary-bg);color:var(--text-primary);
@@ -2289,8 +2335,7 @@ function _showBatchAddDialog() {
     const ta = panel.querySelector('#batch-add-input');
     const countEl = panel.querySelector('#batch-add-count');
     ta.addEventListener('input', () => {
-        const lines = ta.value.split('\n').filter(l => l.trim());
-        countEl.textContent = `${lines.length} 条`;
+        countEl.textContent = `${_parseBatchLines(ta.value).length} 条`;
     });
     ta.addEventListener('focus', e => { e.target.style.borderColor = 'var(--accent-color)'; });
     ta.addEventListener('blur', e => { e.target.style.borderColor = 'var(--border-color)'; });
@@ -2378,7 +2423,7 @@ function _showBatchAddDialog() {
     panel.querySelector('#ba-cancel').onclick = () => overlay.remove();
     overlay.addEventListener('click', e => { if (e.target === overlay && !_drawBusy) overlay.remove(); });
     panel.querySelector('#ba-confirm').onclick = async () => {
-        const allLines = ta.value.split('\n').map(l => l.trim()).filter(Boolean);
+        const allLines = _parseBatchLines(ta.value);
         if (!allLines.length) { showNotification('请输入内容', 'warning'); return; }
         // 让他挑：先摇签决定这批里哪些留得下来，落选的连 customReplies 都不进，等于从未输入
         const draw   = (_drawEnabled && currentSubTab === 'custom') ? _drawSubset(allLines) : null;
@@ -2403,11 +2448,14 @@ function _showBatchAddDialog() {
                 ? customStatuses.some(r => normalizeStringStrict(r) === norm)
                 : currentSubTab === 'period'
                 ? customPeriodCare.some(r => normalizeStringStrict(r) === norm)
+                : currentSubTab === 'emojis'
+                ? customEmojis.some(r => normalizeStringStrict(r) === norm)
                 : false;
             if (isDup) { skipped++; return; }
             if (currentSubTab === 'custom') { customReplies.push(val); newItems.push(val); }
             else if (currentSubTab === 'pokes') { customPokes.push(val); newItems.push(val); }
             else if (currentSubTab === 'statuses') { customStatuses.push(val); newItems.push(val); }
+            else if (currentSubTab === 'emojis') customEmojis.push(val);
             else if (currentSubTab === 'mottos') customMottos.push(val);
             else if (currentSubTab === 'period') customPeriodCare.push(val);
             added++;
@@ -2602,16 +2650,7 @@ function initReplyLibraryListeners() {
             if (currentSubTab === 'stickers') {
                 _showStickerUploadGroupPicker(); return;
             }
-            if (currentSubTab === 'emojis') {
-                const input = prompt('请输入要添加的 Emoji（支持组合表情）:');
-                if (input?.trim()) {
-                    customEmojis.push(input.trim());
-                    throttledSaveData(); renderReplyLibrary();
-                    showNotification('✓ Emoji 已添加', 'success');
-                }
-                return;
-            }
-            if (currentSubTab === 'custom' || currentSubTab === 'pokes' || currentSubTab === 'statuses' || currentSubTab === 'period') {
+            if (currentSubTab === 'custom' || currentSubTab === 'pokes' || currentSubTab === 'statuses' || currentSubTab === 'period' || currentSubTab === 'emojis') {
                 _showBatchAddDialog(); return;
             }
             if (currentSubTab === 'surveyBank') {
@@ -2654,7 +2693,7 @@ function initReplyLibraryListeners() {
 }
 
 function getCategoryName(tabId) {
-    return { custom: '回复', pokes: '拍一拍', statuses: '状态', mottos: '格言', intros: '开场语', period: '相关字卡' }[tabId] || '内容';
+    return { custom: '回复', pokes: '拍一拍', statuses: '状态', mottos: '格言', intros: '开场语', period: '相关字卡', emojis: 'Emoji' }[tabId] || '内容';
 }
 
 function updateTabUI() {
