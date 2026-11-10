@@ -61,11 +61,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         setInterval(checkStatusChange, 60000);
 
-        // 动态/回信 后台定时检查——不管停在哪个页面，每隔30秒自动看一眼有没有该送达的内容了，
+        // 动态/回信/读书笔记 后台定时检查——不管停在哪个页面，每隔30秒自动看一眼有没有该送达的内容了，
         // 不需要刷新页面或者重新进入情侣空间/信箱才能触发
         setInterval(() => {
             try { if (typeof checkEnvelopeStatus === 'function') checkEnvelopeStatus(); } catch(e) { console.warn('[后台轮询] 回信检查失败', e); }
             try { if (typeof checkMomentsStatus === 'function') checkMomentsStatus(); } catch(e) { console.warn('[后台轮询] 动态检查失败', e); }
+            try { if (typeof checkNotesStatus === 'function') checkNotesStatus(); } catch(e) { console.warn('[后台轮询] 读书笔记检查失败', e); }
         }, 30000);
 
         if (disclaimerModal) {

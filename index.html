@@ -36,6 +36,7 @@
     <link rel="stylesheet" href="css/habits.css">
     <link rel="stylesheet" href="css/todos.css">
     <link rel="stylesheet" href="css/card-delete.css">
+    <link rel="stylesheet" href="css/notes.css">
 
     <style id="css-live-preview-style"></style>
     <style>
@@ -618,6 +619,7 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
                 <button class="cs-pill"             id="csp-mood"    onclick="csSwitchTab('mood')"   title="心情手账"><span class="cs-pill-icon"></span></button>
                 <button class="cs-pill"             id="csp-ann"     onclick="csSwitchTab('ann')"    title="纪念日"><span class="cs-pill-icon"></span></button>
                 <button class="cs-pill"             id="csp-cinema"  onclick="csSwitchTab('cinema')" title="电影院"><span class="cs-pill-icon"></span></button>
+                <button class="cs-pill"             id="csp-notes"   onclick="csSwitchTab('notes')"  title="读书笔记"><span class="cs-pill-icon"></span><span class="notes-unread-dot" id="notes-unread-dot"></span></button>
             </div>
         </div>
     </div>
@@ -730,6 +732,10 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
         </div>
         <div class="cs-panel" id="cs-panel-cinema">
             <!-- 内容由 cinema.js 动态填充 -->
+        </div>
+        <div class="cs-panel" id="cs-panel-notes">
+            <!-- 内容由 notes.js 渲染：书架 / 书内笔记 -->
+            <div id="notes-view"><div class="nt-empty">正在翻书…</div></div>
         </div>
 
         <!-- 档案页（全屏覆盖，陪伴日记风格）
@@ -3767,6 +3773,7 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
     <script src="js/features/habits.js"></script>
     <script src="js/features/todos.js"></script>
     <script src="js/features/card-delete.js"></script>
+    <script src="js/features/notes.js"></script>
 <!-- 相册图片详情（全屏） -->
 <div id="al-view-detail" style="display:none;position:fixed;inset:0;z-index:6000;background:#000;flex-direction:column;">
     <div class="al-detail-topbar">

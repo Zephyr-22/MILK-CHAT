@@ -69,6 +69,8 @@
         'momentsData',
         // 电影院（约定/待看清单/观看历史/协商/梦角主动邀请，全是文字数字，没有图片）
         '_cinemaAppt', '_cinemaWatchlist', '_cinemaHistory', '_cinemaNego', '_cinemaPartnerInvite',
+        // 读书笔记（书架 / 笔记 / 他的留言，统一前缀；本模块今后新增键自动上车）
+        'milkchat_note_',
         // 情侣空间设置（等待延迟/是否保存对方图片，纯文字数字）
         'csSpaceSettings',
         // 情侣空间壁纸（当前壁纸 + 壁纸库，图片有清洗逻辑见下方 _collectTextData）
