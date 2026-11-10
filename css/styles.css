@@ -12057,7 +12057,7 @@ body #user-sticker-picker .empty-sticker-tip {
     border-radius: 6px; flex-shrink: 0;
 }
 .cs-post-del:active { opacity: 1; color: #ff4d4f; }
-.cs-post-body { padding: 2px 12px 6px; font-size: 14px; color: var(--text-primary); line-height: 1.6; }
+.cs-post-body { padding: 2px 12px 6px; font-size: 14px; color: var(--text-primary); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
 .cs-post-imgs {
     padding: 4px 12px 8px; display: grid; gap: 3px;
 }
@@ -12233,7 +12233,7 @@ body #user-sticker-picker .empty-sticker-tip {
     cursor: pointer; -webkit-tap-highlight-color: transparent;
 }
 .cs-cmt-item:active { opacity: 0.7; }
-.cs-cmt-content { flex: 1; line-height: 1.55; color: var(--text-primary); }
+.cs-cmt-content { flex: 1; line-height: 1.55; color: var(--text-primary); white-space: pre-wrap; word-break: break-word; }
 .cs-cmt-name { font-weight: 600; color: var(--accent-color); }
 .cs-cmt-reply-word { color: var(--text-secondary); font-size: 11px; }
 .cs-cmt-reply-target { color: var(--accent-color); }
