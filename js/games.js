@@ -1937,9 +1937,9 @@ function initComboMenu() {
         modal.querySelector('#my-sticker-newgroup-upload-label').onclick = function () { fileInput.click(); };
         fileInput.addEventListener('change', function () {
             var files = Array.from(fileInput.files || []);
-            var oversized = files.filter(function (f) { return f.size > 2 * 1024 * 1024; });
-            if (oversized.length) showNotification(oversized.length + ' 张图片超过2MB，已跳过', 'warning');
-            pendingFiles = pendingFiles.concat(files.filter(function (f) { return f.size <= 2 * 1024 * 1024; }));
+            var oversized = files.filter(function (f) { return f.size > 10 * 1024 * 1024; });
+            if (oversized.length) showNotification(oversized.length + ' 张图片超过10MB，已跳过', 'warning');
+            pendingFiles = pendingFiles.concat(files.filter(function (f) { return f.size <= 10 * 1024 * 1024; }));
             renderPreview();
             fileInput.value = '';
         });

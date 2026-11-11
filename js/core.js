@@ -2383,7 +2383,7 @@ const addMessage = (message) => {
             DOMElements.messageInput.value = '';
             _syncMessageInputHeight();
             if (imageFile && imageFile.size > MAX_IMAGE_SIZE) {
-                showNotification('图片大小不能超过5MB', 'error'); DOMElements.imageInput.value = ''; return;
+                showNotification('图片大小不能超过10MB', 'error'); DOMElements.imageInput.value = ''; return;
             }
 
             const createMessage = (imgSrc = null) => {
@@ -2494,7 +2494,7 @@ if (!isBatchMode && type === 'normal') {
                 batchImgInput.addEventListener('change', async (e) => {
                     const file = e.target.files[0];
                     if (!file) return;
-                    if (file.size > MAX_IMAGE_SIZE) { showNotification('图片超过5MB限制', 'warning'); return; }
+                    if (file.size > MAX_IMAGE_SIZE) { showNotification('图片超过10MB限制', 'warning'); return; }
                     try {
                         const base64 = await optimizeImage(file, 600, 0.8);
                         addToBatch(base64);
