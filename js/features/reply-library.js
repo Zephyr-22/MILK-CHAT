@@ -72,6 +72,7 @@ const ICONS = {
     dedup:    `<svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M2 4h11M4.5 7h6M7 10h1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`,
     import:   `<svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 9.5V2M4 6.5l3.5 3L11 6.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="12.5" x2="13" y2="12.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`,
     export:   `<svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 5V12M4 7.5l3.5-3L11 7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="2.5" x2="13" y2="2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`,
+    chevronU: `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 9l4-4 4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`,
     chevronD: `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`,
     chevronR: `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`,
     comment:  `<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2 3.5A1.5 1.5 0 013.5 2h11A1.5 1.5 0 0116 3.5v8A1.5 1.5 0 0114.5 13H10l-3 3v-3H3.5A1.5 1.5 0 012 11.5v-8z" stroke="currentColor" stroke-width="1.3"/></svg>`,
@@ -1113,6 +1114,18 @@ function _showGroupManager() {
                     <span style="width:12px;height:12px;border-radius:50%;background:${g.color||'#868E96'};flex-shrink:0;box-shadow:0 0 0 2px ${g.color||'#868E96'}30;"></span>
                     <span style="flex:1;font-size:13px;color:var(--text-primary);font-weight:600;">${g.name}</span>
                     <span style="font-size:11px;color:var(--text-secondary);">${(g.items||[]).filter(t=>sourceItems.includes(t)).length} 条</span>
+                    <button data-action="up" data-i="${i}" ${i === 0 ? 'disabled' : ''} style="
+                        width:28px;height:28px;border-radius:8px;border:none;background:transparent;
+                        color:var(--text-secondary);cursor:pointer;
+                        display:flex;align-items:center;justify-content:center;
+                        ${i === 0 ? 'opacity:.3;cursor:default;' : ''}
+                    " title="上移">${ICONS.chevronU}</button>
+                    <button data-action="down" data-i="${i}" ${i === groups.length - 1 ? 'disabled' : ''} style="
+                        width:28px;height:28px;border-radius:8px;border:none;background:transparent;
+                        color:var(--text-secondary);cursor:pointer;
+                        display:flex;align-items:center;justify-content:center;
+                        ${i === groups.length - 1 ? 'opacity:.3;cursor:default;' : ''}
+                    " title="下移">${ICONS.chevronD}</button>
                     ${ctx.hideDisabled ? '' : '<button data-action="toggle" data-i="' + i + '" style="width:28px;height:28px;border-radius:8px;border:1px solid var(--border-color);background:' + (g.disabled ? 'var(--accent-color)' : 'transparent') + ';color:' + (g.disabled ? '#fff' : 'var(--text-secondary)') + ';cursor:pointer;display:flex;align-items:center;justify-content:center;" title="' + (g.disabled ? '启用' : '屏蔽') + '">' + (g.disabled ? ICONS.eye : ICONS.eyeOff) + '</button>'}
                     <button data-action="edit" data-i="${i}" style="
                         width:28px;height:28px;border-radius:8px;border:1px solid var(--border-color);
@@ -1131,7 +1144,14 @@ function _showGroupManager() {
             btn.onclick = () => {
                 const i = parseInt(btn.dataset.i);
                 const action = btn.dataset.action;
-                if (action === 'toggle') {
+                if (action === 'up' || action === 'down') {
+                    // 自定义排序：与相邻分组交换位置。顺序即数组顺序，筛选条 / 区块视图自动跟随
+                    const j = action === 'up' ? i - 1 : i + 1;
+                    if (j < 0 || j >= groups.length) return;
+                    const [moved] = groups.splice(i, 1);
+                    groups.splice(j, 0, moved);
+                    throttledSaveData(); render(); renderReplyLibrary();
+                } else if (action === 'toggle') {
                     groups[i].disabled = !groups[i].disabled;
                     throttledSaveData(); render(); renderReplyLibrary();
                 } else if (action === 'edit') {
