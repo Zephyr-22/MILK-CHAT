@@ -28,7 +28,50 @@ function _getGroupCtx(tab) {
     }
     // default: custom replies
     if (!window.customReplyGroups) window.customReplyGroups = [];
-    return { groups: window.customReplyGroups, items: customReplies, itemLabel: '字卡' };
+    // subGroups: 只有字卡支持二级分组（拍一拍 / 状态 / 表情包维持一级）
+    return { groups: window.customReplyGroups, items: customReplies, itemLabel: '字卡', subGroups: true };
+}
+
+/* ── 二级分组（仅字卡）────────────────────────────────────────────
+   分组对象新增可选 parentId：缺失 / null = 一级；值 = 某个一级分组的 id。
+   只支持「父 → 子」一层，子分组不能再有子分组（编辑器里已限制）。
+   数组顺序仍是排序依据，但只在同级内生效——↑↓ 只交换同级兄弟。
+   归属仍沿用「存在分组自己的 items 里」，所以所有只看 g.items / g.disabled 的
+   消费方（回复池、自删、云同步）无需任何改动。 */
+function _subgroupsOn(ctx) { return !!(ctx && ctx.subGroups); }
+function _gIdEq(a, b) { return String(a) === String(b); }
+function _gById(groups, id) {
+    if (id === null || id === undefined) return null;
+    return (groups || []).find(g => g && _gIdEq(g.id, id)) || null;
+}
+/** 一级分组（parentId 悬空的分组也当一级，避免导入残缺数据后整组消失） */
+function _gTop(groups) { return (groups || []).filter(g => !g.parentId || !_gById(groups, g.parentId)); }
+function _gKids(groups, id) { return (groups || []).filter(g => g && _gIdEq(g.parentId, id)); }
+function _gHasKids(groups, id) { return (groups || []).some(g => g && _gIdEq(g.parentId, id)); }
+/** 同一层级的兄弟列表（排序只在兄弟之间交换）；父级缺失时退回一级，避免排不动 */
+function _gSiblings(groups, g) {
+    if (g && g.parentId && _gById(groups, g.parentId)) {
+        const sibs = _gKids(groups, g.parentId);
+        if (sibs.length) return sibs;
+    }
+    return _gTop(groups);
+}
+/** 树形展开顺序：每个一级分组后面紧跟它的子分组 */
+function _gTreeOrder(groups) {
+    const out = [];
+    _gTop(groups).forEach(g => {
+        out.push(g);
+        _gKids(groups, g.id).forEach(k => out.push(k));
+    });
+    return out;
+}
+/** 某个分组自身 + 其子分组覆盖的全部条目（父级筛选/计数用） */
+function _gAllItems(groups, g) {
+    const out = [];
+    const push = t => { if (out.indexOf(t) === -1) out.push(t); };
+    (g.items || []).forEach(push);
+    _gKids(groups, g.id).forEach(k => (k.items || []).forEach(push));
+    return out;
 }
 
 // 判断当前 tab 是否支持分组
@@ -117,6 +160,9 @@ const ICONS = {
         .rl-act-btn.danger:hover { border-color:#ef4444;color:#ef4444; }
         .rl-act-btn.active { background:var(--accent-color);border-color:var(--accent-color);color:#fff; }
         .rl-group-block { margin-bottom:12px; }
+        .rl-group-block--nested { margin:8px 0 0 10px; }
+        .rl-group-block--nested .rl-group-header { padding:7px 12px; background:transparent; }
+        .rl-group-block--nested .rl-group-body { background:var(--secondary-bg); }
         .rl-group-header {
             display:flex;align-items:center;gap:9px;padding:9px 14px;
             border-radius:12px 12px 0 0;
@@ -329,10 +375,49 @@ function _renderModernToolbar() {
 
     let groupFilterHtml = '';
     if (hasGroupSupport && ctx.groups && ctx.groups.length > 0) {
+        const subOn = _subgroupsOn(ctx);
         const allCount = ctx.items.length;
         const ungroupedCount = ctx.items.filter(item =>
             !ctx.groups.some(g => g.items && g.items.includes(item))
         ).length;
+
+        // 一级胶囊：二级开启时只列一级分组（子组在第二行出现）
+        const topGroups = subOn ? _gTop(ctx.groups) : ctx.groups;
+        const pillHtml = (g, isSub, label, ancestorOn) => {
+            const cnt = (subOn ? _gAllItems(ctx.groups, g) : (g.items || []))
+                .filter(item => ctx.items.includes(item)).length;
+            const active = _gIdEq(_activeGroupFilter, g.id);
+            const accent = active
+                ? `background:${g.color}22;border-color:${g.color};color:${g.color};`
+                : (ancestorOn ? `border-color:${g.color}99;color:${g.color};` : '');
+            return `<button class="gfp-btn ${active ? 'gfp-active' : ''} ${g.disabled ? 'gfp-disabled' : ''}"
+                data-filter="${g.id}"
+                style="${accent}${isSub ? 'font-size:11px;padding:4px 9px;' : ''}">
+                <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${g.color || '#aaa'};margin-right:4px;flex-shrink:0;vertical-align:middle;"></span>
+                ${label || g.name} <span class="gfp-count">${cnt}</span>
+                ${g.disabled ? `<span style="font-size:9px;opacity:0.7;margin-left:2px;">${ICONS.eyeOff}</span>` : ''}
+            </button>`;
+        };
+
+        // 二级行：当前筛选落在某个一级组（或它的子组）上时，露出该组的子组
+        let subRowHtml = '';
+        if (subOn && _activeGroupFilter !== null && _activeGroupFilter !== 'ungrouped') {
+            const sel = ctx.groups.find(g => g && _gIdEq(g.id, _activeGroupFilter));
+            const parent = sel && sel.parentId ? _gById(ctx.groups, sel.parentId) : sel;
+            const kids = parent ? _gKids(ctx.groups, parent.id) : [];
+            if (parent && kids.length) {
+                subRowHtml = `
+                    <div id="group-filter-pills-sub" style="
+                        display:flex;align-items:center;gap:6px;overflow-x:auto;padding:6px 15px 0;
+                        scrollbar-width:none;-webkit-overflow-scrolling:touch;flex-shrink:0;
+                    ">
+                        <span style="font-size:10px;color:var(--text-secondary);opacity:.7;flex-shrink:0;">${parent.name}·</span>
+                        ${pillHtml(parent, true, '全部')}
+                        ${kids.map(k => pillHtml(k, true)).join('')}
+                    </div>`;
+            }
+        }
+
         groupFilterHtml = `
             <div id="group-filter-pills" style="
                 display:flex;gap:6px;overflow-x:auto;padding:8px 15px 0;
@@ -344,17 +429,12 @@ function _renderModernToolbar() {
                 <button class="gfp-btn ${_activeGroupFilter === 'ungrouped' ? 'gfp-active' : ''}" data-filter="ungrouped">
                     未分组 <span class="gfp-count">${ungroupedCount}</span>
                 </button>
-                ${ctx.groups.map(g => {
-                    const cnt = (g.items || []).filter(item => ctx.items.includes(item)).length;
-                    return `<button class="gfp-btn ${_activeGroupFilter === g.id ? 'gfp-active' : ''} ${g.disabled ? 'gfp-disabled' : ''}"
-                        data-filter="${g.id}"
-                        style="${_activeGroupFilter === g.id ? `background:${g.color}22;border-color:${g.color};color:${g.color};` : ''}">
-                        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${g.color || '#aaa'};margin-right:4px;flex-shrink:0;vertical-align:middle;"></span>
-                        ${g.name} <span class="gfp-count">${cnt}</span>
-                        ${g.disabled ? `<span style="font-size:9px;opacity:0.7;margin-left:2px;">${ICONS.eyeOff}</span>` : ''}
-                    </button>`;
+                ${topGroups.map(g => {
+                    const kidOn = subOn && _gKids(ctx.groups, g.id).some(k => _gIdEq(k.id, _activeGroupFilter));
+                    return pillHtml(g, false, null, kidOn);
                 }).join('')}
             </div>
+            ${subRowHtml}
         `;
     }
 
@@ -530,7 +610,8 @@ function _renderModernToolbar() {
     toolbar.querySelectorAll('.gfp-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const f = btn.dataset.filter;
-            _activeGroupFilter = f === 'all' ? null : (f === 'ungrouped' ? 'ungrouped' : parseInt(f));
+            _activeGroupFilter = f === 'all' ? null
+                : (f === 'ungrouped' ? 'ungrouped' : (/^\d+$/.test(f) ? parseInt(f) : f));
             renderReplyLibrary();
         });
     });
@@ -621,13 +702,23 @@ function _renderCardViewWithGroups(list, items) {
             return;
         }
 
+        const subOn = _subgroupsOn(ctx);
         const inGroup = new Set();
-        groups.forEach(g => {
-            const groupItems = (g.items || [])
-                .map(t => ({ text: t, idx: sourceItems.indexOf(t) }))
-                .filter(x => x.idx >= 0 && items.includes(x.text));
+        const collect = (g) => (g.items || [])
+            .map(t => ({ text: t, idx: sourceItems.indexOf(t) }))
+            .filter(x => x.idx >= 0 && items.includes(x.text));
+        const topGroups = subOn ? _gTop(groups) : groups;
+
+        topGroups.forEach(g => {
+            const groupItems = collect(g);
             groupItems.forEach(x => inGroup.add(x.idx));
-            _renderGroupBlock(list, g, groupItems, disabledSet);
+            // 二级：把子分组作为嵌套区块塞进父块里（父块折叠时一并收起）
+            const childBlocks = subOn ? _gKids(groups, g.id).map(k => {
+                const its = collect(k);
+                its.forEach(x => inGroup.add(x.idx));
+                return { group: k, items: its };
+            }) : [];
+            _renderGroupBlock(list, g, groupItems, disabledSet, false, childBlocks);
         });
 
         const ungrouped = itemsWithIdx.filter(x => !inGroup.has(x.idx));
@@ -647,9 +738,11 @@ function _renderCardViewWithGroups(list, items) {
             _renderCardList(list, ungrouped, disabledSet);
         }
     } else {
-        const g = groups.find(g => g.id === _activeGroupFilter);
+        const g = groups.find(g => g && _gIdEq(g.id, _activeGroupFilter));
         if (!g) { list.innerHTML = renderEmptyState('分组不存在'); return; }
-        const filtered = itemsWithIdx.filter(x => (g.items || []).includes(x.text));
+        // 二级：选中一级分组时，连带它的子分组一起展示
+        const scopeItems = _subgroupsOn(ctx) ? _gAllItems(groups, g) : (g.items || []);
+        const filtered = itemsWithIdx.filter(x => scopeItems.includes(x.text));
         if (filtered.length === 0) {
             list.innerHTML = renderEmptyState('此分组暂无内容');
         } else {
@@ -658,9 +751,9 @@ function _renderCardViewWithGroups(list, items) {
     }
 }
 
-function _renderGroupBlock(list, group, groupItems, disabledSet, isUngrouped = false) {
+function _renderGroupBlock(list, group, groupItems, disabledSet, isUngrouped = false, childBlocks = [], nested = false) {
     const section = document.createElement('div');
-    section.className = 'rl-group-block';
+    section.className = 'rl-group-block' + (nested ? ' rl-group-block--nested' : '');
     const isCollapsed = group._collapsed || false;
     const isDisabled = group.disabled;
     const colorDot = group.color || '#868E96';
@@ -669,10 +762,10 @@ function _renderGroupBlock(list, group, groupItems, disabledSet, isUngrouped = f
         <div class="rl-group-header${isCollapsed ? ' collapsed' : ''}" id="grp-hdr-${group.id}" style="${isDisabled ? 'opacity:0.5;' : ''}">
             <div class="rl-group-tag" id="grp-tag-${group.id}" title="${isDisabled ? '点击启用此分组' : '点击屏蔽此分组'}">
                 <span style="width:8px;height:8px;border-radius:50%;background:${colorDot};flex-shrink:0;"></span>
-                <span style="font-size:12px;font-weight:700;color:${colorDot};">${group.name}</span>
+                <span style="font-size:12px;font-weight:700;color:${colorDot};">${nested ? '↳ ' : ''}${group.name}</span>
                 ${isDisabled ? `<span title="已屏蔽" style="color:${colorDot};">${ICONS.eyeOff}</span>` : ''}
             </div>
-            <span style="font-size:11px;color:var(--text-secondary);">${groupItems.length} 条</span>
+            <span style="font-size:11px;color:var(--text-secondary);">${groupItems.length} 条${childBlocks.length ? ` · ${childBlocks.length} 子组` : ''}</span>
             ${_batchModeActive && groupItems.length > 0 ? (() => {
                 const allSel = groupItems.every(x => _batchSelectedIndices.has(x.idx));
                 const someSel = !allSel && groupItems.some(x => _batchSelectedIndices.has(x.idx));
@@ -701,10 +794,16 @@ function _renderGroupBlock(list, group, groupItems, disabledSet, isUngrouped = f
     list.appendChild(section);
 
     const body = section.querySelector(`#grp-body-${group.id}`);
-    if (groupItems.length === 0) {
+    if (groupItems.length === 0 && childBlocks.length === 0) {
         body.innerHTML = `<div style="padding:18px;text-align:center;font-size:12px;color:var(--text-secondary);opacity:0.6;">此分组暂无内容</div>`;
     } else {
-        _renderCardList(body, groupItems, disabledSet);
+        if (groupItems.length > 0) {
+            _renderCardList(body, groupItems, disabledSet);
+        } else if (childBlocks.length > 0) {
+            body.innerHTML = `<div style="padding:8px 10px 4px;font-size:11px;color:var(--text-secondary);opacity:0.6;">本组无直属字卡</div>`;
+        }
+        // 子分组区块嵌在父块内部：父块折叠时一并收起
+        childBlocks.forEach(cb => _renderGroupBlock(body, cb.group, cb.items, disabledSet, false, [], true));
     }
 
     section.querySelector('.grp-select-all-btn')?.addEventListener('click', e => {
@@ -1100,66 +1199,86 @@ function _showGroupManager() {
 
     const render = () => {
         const noGroups = !groups || groups.length === 0;
-        panel.querySelector('#gm-list').innerHTML = noGroups
-            ? `<div style="text-align:center;padding:32px 0;color:var(--text-secondary);font-size:13px;opacity:0.7;">
+        if (noGroups) {
+            panel.querySelector('#gm-list').innerHTML = `<div style="text-align:center;padding:32px 0;color:var(--text-secondary);font-size:13px;opacity:0.7;">
                     还没有分组<br><span style="font-size:11px;">点击下方按钮创建第一个分组</span>
-               </div>`
-            : groups.map((g, i) => `
+               </div>`;
+            return;
+        }
+        const subOn = _subgroupsOn(ctx);
+        // 树形行序：一级分组后面紧跟它的子分组（子组缩进显示）
+        const rows = [];
+        const tops = subOn ? _gTop(groups) : groups;
+        tops.forEach(g => {
+            rows.push({ g, depth: 0 });
+            if (subOn) _gKids(groups, g.id).forEach(k => rows.push({ g: k, depth: 1 }));
+        });
+
+        panel.querySelector('#gm-list').innerHTML = rows.map(({ g, depth }) => {
+            const sibs = _gSiblings(groups, g);
+            const si = sibs.indexOf(g);
+            const isFirst = si <= 0, isLast = si >= sibs.length - 1;
+            const kidsN = subOn ? _gKids(groups, g.id).length : 0;
+            const cnt = (g.items || []).filter(t => sourceItems.includes(t)).length;
+            const upStyle = `width:28px;height:28px;border-radius:8px;border:none;background:transparent;color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;${isFirst ? 'opacity:.3;cursor:default;' : ''}`;
+            const downStyle = `width:28px;height:28px;border-radius:8px;border:none;background:transparent;color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;${isLast ? 'opacity:.3;cursor:default;' : ''}`;
+            return `
                 <div style="
-                    display:flex;align-items:center;gap:10px;padding:12px 14px;
+                    display:flex;align-items:center;gap:8px;padding:12px 14px;padding-left:${depth ? 32 : 14}px;
                     border-radius:13px;border:1.5px solid var(--border-color);
-                    background:var(--primary-bg);${g.disabled ? 'opacity:0.55;' : ''}
+                    background:${depth ? 'var(--secondary-bg)' : 'var(--primary-bg)'};${g.disabled ? 'opacity:0.55;' : ''}
                     transition:all 0.15s;
                 ">
-                    <span style="width:12px;height:12px;border-radius:50%;background:${g.color||'#868E96'};flex-shrink:0;box-shadow:0 0 0 2px ${g.color||'#868E96'}30;"></span>
-                    <span style="flex:1;font-size:13px;color:var(--text-primary);font-weight:600;">${g.name}</span>
-                    <span style="font-size:11px;color:var(--text-secondary);">${(g.items||[]).filter(t=>sourceItems.includes(t)).length} 条</span>
-                    <button data-action="up" data-i="${i}" ${i === 0 ? 'disabled' : ''} style="
-                        width:28px;height:28px;border-radius:8px;border:none;background:transparent;
-                        color:var(--text-secondary);cursor:pointer;
-                        display:flex;align-items:center;justify-content:center;
-                        ${i === 0 ? 'opacity:.3;cursor:default;' : ''}
-                    " title="上移">${ICONS.chevronU}</button>
-                    <button data-action="down" data-i="${i}" ${i === groups.length - 1 ? 'disabled' : ''} style="
-                        width:28px;height:28px;border-radius:8px;border:none;background:transparent;
-                        color:var(--text-secondary);cursor:pointer;
-                        display:flex;align-items:center;justify-content:center;
-                        ${i === groups.length - 1 ? 'opacity:.3;cursor:default;' : ''}
-                    " title="下移">${ICONS.chevronD}</button>
-                    ${ctx.hideDisabled ? '' : '<button data-action="toggle" data-i="' + i + '" style="width:28px;height:28px;border-radius:8px;border:1px solid var(--border-color);background:' + (g.disabled ? 'var(--accent-color)' : 'transparent') + ';color:' + (g.disabled ? '#fff' : 'var(--text-secondary)') + ';cursor:pointer;display:flex;align-items:center;justify-content:center;" title="' + (g.disabled ? '启用' : '屏蔽') + '">' + (g.disabled ? ICONS.eye : ICONS.eyeOff) + '</button>'}
-                    <button data-action="edit" data-i="${i}" style="
+                    ${depth ? '<span style="color:var(--text-secondary);opacity:.45;flex-shrink:0;font-size:13px;">↳</span>' : ''}
+                    <span style="width:12px;height:12px;border-radius:50%;background:${g.color || '#868E96'};flex-shrink:0;box-shadow:0 0 0 2px ${g.color || '#868E96'}30;"></span>
+                    <span style="flex:1;min-width:0;font-size:13px;color:var(--text-primary);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${g.name}</span>
+                    <span style="font-size:11px;color:var(--text-secondary);flex-shrink:0;">${cnt} 条${kidsN ? ` · ${kidsN} 子组` : ''}</span>
+                    <button data-action="up" data-id="${g.id}" ${isFirst ? 'disabled' : ''} style="${upStyle}" title="上移">${ICONS.chevronU}</button>
+                    <button data-action="down" data-id="${g.id}" ${isLast ? 'disabled' : ''} style="${downStyle}" title="下移">${ICONS.chevronD}</button>
+                    ${ctx.hideDisabled ? '' : '<button data-action="toggle" data-id="' + g.id + '" style="width:28px;height:28px;border-radius:8px;border:1px solid var(--border-color);background:' + (g.disabled ? 'var(--accent-color)' : 'transparent') + ';color:' + (g.disabled ? '#fff' : 'var(--text-secondary)') + ';cursor:pointer;display:flex;align-items:center;justify-content:center;" title="' + (g.disabled ? '启用' : (kidsN ? '屏蔽（仅本组直属字卡，不影响子组）' : '屏蔽')) + '">' + (g.disabled ? ICONS.eye : ICONS.eyeOff) + '</button>'}
+                    <button data-action="edit" data-id="${g.id}" style="
                         width:28px;height:28px;border-radius:8px;border:1px solid var(--border-color);
                         background:transparent;color:var(--text-secondary);cursor:pointer;
                         display:flex;align-items:center;justify-content:center;
                     " title="编辑">${ICONS.edit}</button>
-                    <button data-action="del" data-i="${i}" style="
+                    <button data-action="del" data-id="${g.id}" style="
                         width:28px;height:28px;border-radius:8px;border:1px solid rgba(239,68,68,.25);
                         background:transparent;color:#ef4444;cursor:pointer;
                         display:flex;align-items:center;justify-content:center;
                     " title="删除">${ICONS.trash}</button>
-                </div>
-            `).join('');
+                </div>`;
+        }).join('');
 
         panel.querySelectorAll('[data-action]').forEach(btn => {
             btn.onclick = () => {
-                const i = parseInt(btn.dataset.i);
+                const g = _gById(groups, btn.dataset.id);
                 const action = btn.dataset.action;
+                if (!g) return;
                 if (action === 'up' || action === 'down') {
-                    // 自定义排序：与相邻分组交换位置。顺序即数组顺序，筛选条 / 区块视图自动跟随
-                    const j = action === 'up' ? i - 1 : i + 1;
-                    if (j < 0 || j >= groups.length) return;
-                    const [moved] = groups.splice(i, 1);
-                    groups.splice(j, 0, moved);
+                    // 自定义排序：只在同级兄弟之间交换。数组顺序即顺序，筛选条 / 区块视图自动跟随
+                    const sibs = _gSiblings(groups, g);
+                    const si = sibs.indexOf(g);
+                    const target = sibs[action === 'up' ? si - 1 : si + 1];
+                    if (!target) return;
+                    const gA = groups.indexOf(g), gB = groups.indexOf(target);
+                    if (gA < 0 || gB < 0) return;
+                    groups[gA] = target; groups[gB] = g;
                     throttledSaveData(); render(); renderReplyLibrary();
                 } else if (action === 'toggle') {
-                    groups[i].disabled = !groups[i].disabled;
+                    g.disabled = !g.disabled;
                     throttledSaveData(); render(); renderReplyLibrary();
                 } else if (action === 'edit') {
                     overlay.remove();
-                    _showGroupEditor(groups[i], ctx);
+                    _showGroupEditor(g, ctx);
                 } else if (action === 'del') {
-                    if (confirm(`删除分组「${groups[i].name}」？（内容不会被删除）`)) {
-                        groups.splice(i, 1);
+                    const kids = _gKids(groups, g.id);
+                    const msg = kids.length
+                        ? `删除分组「${g.name}」？\n\n它的 ${kids.length} 个子分组会提升为一级分组，内容都不会被删除。`
+                        : `删除分组「${g.name}」？（内容不会被删除）`;
+                    if (confirm(msg)) {
+                        // 子分组提升为一级，避免子组跟着父组一起消失
+                        kids.forEach(k => { delete k.parentId; });
+                        groups.splice(groups.indexOf(g), 1);
                         throttledSaveData(); render(); renderReplyLibrary();
                     }
                 }
@@ -1212,6 +1331,36 @@ function _showGroupEditor(group, ctx) {
     const initColor = group?.color || GROUP_COLORS[Math.floor(Math.random() * GROUP_COLORS.length)];
     let selectedColor = initColor;
 
+    // 二级分组：只有字卡支持；已有子组的分组不能再挂到别的组下面（限制两层）
+    const canNest = _subgroupsOn(ctx) && (isNew || !_gHasKids(groups, group.id));
+    const parentCandidates = _subgroupsOn(ctx)
+        ? _gTop(groups).filter(g => !group || !_gIdEq(g.id, group.id))
+        : [];
+    let parentHtml = '';
+    if (canNest) {
+        const curParent = group && group.parentId ? group.parentId : '';
+        parentHtml = `
+        <div style="margin-bottom:14px;">
+            <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:7px;letter-spacing:.5px;">上级分组</label>
+            <select id="ge-parent" style="
+                width:100%;box-sizing:border-box;padding:11px 14px;
+                border:1.5px solid var(--border-color);border-radius:12px;
+                background:var(--primary-bg);color:var(--text-primary);
+                font-size:14px;font-family:var(--font-family);outline:none;
+                -webkit-appearance:none;appearance:none;
+            ">
+                <option value="">无（一级分组）</option>
+                ${parentCandidates.map(p => `<option value="${p.id}" ${_gIdEq(curParent, p.id) ? 'selected' : ''}>${p.name}</option>`).join('')}
+            </select>
+        </div>`;
+    } else if (_subgroupsOn(ctx) && group) {
+        parentHtml = `
+        <div style="margin-bottom:14px;padding:9px 12px;border-radius:10px;background:var(--primary-bg);
+            font-size:11px;color:var(--text-secondary);opacity:.8;line-height:1.5;">
+            该分组已包含子分组，不能再设为二级。
+        </div>`;
+    }
+
     const panel = document.createElement('div');
     panel.style.cssText = `
         background:var(--secondary-bg);border-radius:22px;padding:24px;
@@ -1234,6 +1383,8 @@ function _showGroupEditor(group, ctx) {
                 font-size:14px;font-family:var(--font-family);outline:none;transition:border 0.18s;
             ">
         </div>
+
+        ${parentHtml}
 
         <div style="margin-bottom:12px;">
             <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:8px;letter-spacing:.5px;">COLOR PRESET</label>
@@ -1329,11 +1480,22 @@ function _showGroupEditor(group, ctx) {
     panel.querySelector('#ge-save').onclick = () => {
         const name = panel.querySelector('#ge-name').value.trim();
         if (!name) { showNotification('请输入分组名称', 'warning'); return; }
+        const parentEl = panel.querySelector('#ge-parent');
+        let parentId = parentEl && parentEl.value !== '' ? parentEl.value : null;
+        // 兜底校验：上级必须存在且本身是一级分组（防脏数据造出三层）
+        if (parentId !== null) {
+            const p = _gById(groups, parentId);
+            if (!p || p.parentId) parentId = null;
+        }
         if (isNew) {
-            groups.push({ id: Date.now(), name, color: selectedColor, disabled: false, items: [] });
+            groups.push({ id: Date.now(), name, color: selectedColor, disabled: false, items: [], parentId });
         } else {
             group.name = name;
             group.color = selectedColor;
+            if (canNest) {
+                if (parentId === null) delete group.parentId;
+                else group.parentId = parentId;
+            }
         }
         throttledSaveData();
         overlay.remove();
@@ -1367,11 +1529,11 @@ function _showSingleItemGroupPicker(itemText, ctx) {
                 <input type="radio" name="sgp" value="" ${!currentGroup ? 'checked' : ''} style="accent-color:var(--accent-color);">
                 <span style="font-size:13px;color:var(--text-secondary);">不分组</span>
             </label>
-            ${groups.map((g, i) => `
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border-radius:11px;border:1.5px solid ${currentGroup?.id === g.id ? g.color : 'var(--border-color)'};background:${currentGroup?.id === g.id ? g.color + '10' : 'var(--primary-bg)'};">
-                    <input type="radio" name="sgp" value="${i}" ${currentGroup?.id === g.id ? 'checked' : ''} style="accent-color:${g.color};">
+            ${(_subgroupsOn(ctx) ? _gTreeOrder(groups) : groups).map(g => `
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;padding-left:${g.parentId ? 26 : 12}px;border-radius:11px;border:1.5px solid ${_gIdEq(currentGroup?.id, g.id) ? g.color : 'var(--border-color)'};background:${_gIdEq(currentGroup?.id, g.id) ? g.color + '10' : 'var(--primary-bg)'};">
+                    <input type="radio" name="sgp" value="${g.id}" ${_gIdEq(currentGroup?.id, g.id) ? 'checked' : ''} style="accent-color:${g.color};">
                     <span style="width:9px;height:9px;border-radius:50%;background:${g.color||'#aaa'};flex-shrink:0;"></span>
-                    <span style="flex:1;font-size:13px;color:var(--text-primary);font-weight:600;">${g.name}</span>
+                    <span style="flex:1;font-size:13px;color:var(--text-primary);font-weight:600;">${g.parentId ? '↳ ' : ''}${g.name}</span>
                     <span style="font-size:11px;color:var(--text-secondary);">${(g.items||[]).length} 条</span>
                 </label>
             `).join('')}
@@ -1391,9 +1553,11 @@ function _showSingleItemGroupPicker(itemText, ctx) {
         if (!checked) return;
         groups.forEach(g => { if (g.items) g.items = g.items.filter(t => t !== itemText); });
         if (checked.value !== '') {
-            const idx = parseInt(checked.value);
-            if (!groups[idx].items) groups[idx].items = [];
-            groups[idx].items.push(itemText);
+            const target = _gById(groups, checked.value);
+            if (target) {
+                if (!target.items) target.items = [];
+                target.items.push(itemText);
+            }
         }
         throttledSaveData();
         overlay.remove();
@@ -1429,11 +1593,11 @@ function _showBatchGroupPicker() {
                 <input type="radio" name="bgp" value="" checked style="accent-color:var(--accent-color);">
                 <span style="font-size:13px;color:var(--text-secondary);">移出所有分组</span>
             </label>
-            ${groups.map((g, i) => `
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border-radius:11px;border:1.5px solid var(--border-color);background:var(--primary-bg);">
-                    <input type="radio" name="bgp" value="${i}" style="accent-color:${g.color};">
+            ${(_subgroupsOn(ctx) ? _gTreeOrder(groups) : groups).map(g => `
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;padding-left:${g.parentId ? 26 : 12}px;border-radius:11px;border:1.5px solid var(--border-color);background:var(--primary-bg);">
+                    <input type="radio" name="bgp" value="${g.id}" style="accent-color:${g.color};">
                     <span style="width:9px;height:9px;border-radius:50%;background:${g.color||'#aaa'};flex-shrink:0;"></span>
-                    <span style="flex:1;font-size:13px;color:var(--text-primary);font-weight:600;">${g.name}</span>
+                    <span style="flex:1;font-size:13px;color:var(--text-primary);font-weight:600;">${g.parentId ? '↳ ' : ''}${g.name}</span>
                     <span style="font-size:11px;color:var(--text-secondary);">${(g.items||[]).length} 条</span>
                 </label>
             `).join('')}
@@ -1453,11 +1617,13 @@ function _showBatchGroupPicker() {
         if (!checked) return;
         groups.forEach(g => { if (g.items) g.items = g.items.filter(t => !selectedItems.includes(t)); });
         if (checked.value !== '') {
-            const idx = parseInt(checked.value);
-            if (!groups[idx].items) groups[idx].items = [];
-            selectedItems.forEach(item => {
-                if (!groups[idx].items.includes(item)) groups[idx].items.push(item);
-            });
+            const target = _gById(groups, checked.value);
+            if (target) {
+                if (!target.items) target.items = [];
+                selectedItems.forEach(item => {
+                    if (!target.items.includes(item)) target.items.push(item);
+                });
+            }
         }
         throttledSaveData();
         _batchSelectedIndices.clear();
@@ -1717,14 +1883,15 @@ function _showGroupExportPicker(type) {
     document.body.appendChild(overlay);
 
     const listEl = panel.querySelector('#_gep_list');
-    cfg.groups.forEach((g, i) => {
+    // 二级：按树形顺序列出（一级组后跟子组并缩进），值改用 id 避免索引错位
+    _gTreeOrder(cfg.groups || []).forEach(g => {
         const cnt = (g.items || []).filter(t => cfg.items.includes(t)).length;
         const row = document.createElement('label');
-        row.style.cssText = `display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:13px;border:1.5px solid var(--border-color);background:var(--primary-bg);cursor:pointer;transition:border-color 0.15s;`;
+        row.style.cssText = `display:flex;align-items:center;gap:12px;padding:12px 14px;padding-left:${g.parentId ? 26 : 14}px;border-radius:13px;border:1.5px solid var(--border-color);background:var(--primary-bg);cursor:pointer;transition:border-color 0.15s;`;
         row.innerHTML = `
-            <input type="checkbox" value="${i}" style="width:16px;height:16px;accent-color:${g.color};flex-shrink:0;" checked>
+            <input type="checkbox" value="${g.id}" style="width:16px;height:16px;accent-color:${g.color};flex-shrink:0;" checked>
             <span style="width:10px;height:10px;border-radius:50%;background:${g.color||'#aaa'};flex-shrink:0;"></span>
-            <span style="flex:1;font-size:13px;font-weight:600;color:var(--text-primary);">${g.name}</span>
+            <span style="flex:1;font-size:13px;font-weight:600;color:var(--text-primary);">${g.parentId ? '↳ ' : ''}${g.name}</span>
             <span style="font-size:11px;color:var(--text-secondary);">${cnt} 条</span>
         `;
         listEl.appendChild(row);
@@ -1734,10 +1901,10 @@ function _showGroupExportPicker(type) {
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 
     panel.querySelector('#_gep_confirm').onclick = () => {
-        const checked = [...panel.querySelectorAll('input[type=checkbox]:checked')].map(cb => parseInt(cb.value));
+        const checked = [...panel.querySelectorAll('input[type=checkbox]:checked')].map(cb => cb.value);
         if (!checked.length) { showNotification('请至少选择一个分组', 'warning'); return; }
 
-        const selectedGroups = checked.map(i => cfg.groups[i]);
+        const selectedGroups = checked.map(v => _gById(cfg.groups, v)).filter(Boolean);
         const allItems = new Set();
         const exportGroups = [];
         selectedGroups.forEach(g => {
@@ -2278,18 +2445,18 @@ function _showBatchAddDialog() {
 
     const hasGroups = groups && groups.length > 0;
     const groupPillsHTML = hasGroups ? `
-        <button class="ba-grp-pill" data-gidx="-1" style="
+        <button class="ba-grp-pill" data-gid="-1" style="
             padding:5px 13px;border-radius:20px;font-size:12px;font-family:var(--font-family);cursor:pointer;
             border:1.5px solid var(--accent-color);background:var(--accent-color);color:#fff;font-weight:700;
             flex-shrink:0;transition:all .15s;
         ">不分组</button>
-        ${groups.map((g, i) => `
-        <button class="ba-grp-pill" data-gidx="${i}" style="
+        ${(_subgroupsOn(ctx) ? _gTreeOrder(groups) : groups).map(g => `
+        <button class="ba-grp-pill" data-gid="${g.id}" style="
             padding:5px 13px;border-radius:20px;font-size:12px;font-family:var(--font-family);cursor:pointer;
             border:1.5px solid ${g.color}44;background:${g.color}18;color:${g.color};font-weight:600;
-            flex-shrink:0;transition:all .15s;
+            flex-shrink:0;transition:all .15s;${g.parentId ? 'opacity:.9;' : ''}
         ">
-            <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${g.color};margin-right:4px;vertical-align:middle;"></span>${g.name}
+            <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${g.color};margin-right:4px;vertical-align:middle;"></span>${g.parentId ? '↳ ' : ''}${g.name}
         </button>`).join('')}
     ` : '';
 
@@ -2412,7 +2579,9 @@ function _showBatchAddDialog() {
         pillContainer.addEventListener('click', e => {
             const pill = e.target.closest('.ba-grp-pill');
             if (!pill) return;
-            _selectedGroupIdx = parseInt(pill.dataset.gidx);
+            // 二级分组下用 id 定位再换算成索引：分组可重排，index 不再稳定
+            const gid = pill.dataset.gid;
+            _selectedGroupIdx = gid === '-1' ? -1 : groups.findIndex(g => _gIdEq(g.id, gid));
             if (toggleLabel) {
                 if (_selectedGroupIdx === -1) {
                     toggleLabel.textContent = '添加到分组';
@@ -2421,17 +2590,17 @@ function _showBatchAddDialog() {
                     toggleLabel.textContent = g ? `分组：${g.name}` : '添加到分组';
                 }
             }
-            pillContainer.querySelectorAll('.ba-grp-pill').forEach((p, i) => {
-                const gidx = parseInt(p.dataset.gidx);
-                if (gidx === -1) {
+            pillContainer.querySelectorAll('.ba-grp-pill').forEach((p) => {
+                const pid = p.dataset.gid;
+                if (pid === '-1') {
                     const isActive = _selectedGroupIdx === -1;
                     p.style.background = isActive ? 'var(--accent-color)' : 'transparent';
                     p.style.color = isActive ? '#fff' : 'var(--text-secondary)';
                     p.style.borderColor = isActive ? 'var(--accent-color)' : 'var(--border-color)';
                 } else {
-                    const g = groups[gidx];
+                    const g = _gById(groups, pid);
                     if (!g) return;
-                    const isActive = _selectedGroupIdx === gidx;
+                    const isActive = _selectedGroupIdx > -1 && _gIdEq(groups[_selectedGroupIdx].id, g.id);
                     p.style.background = isActive ? g.color : g.color + '18';
                     p.style.color = isActive ? '#fff' : g.color;
                     p.style.borderColor = isActive ? g.color : g.color + '44';
