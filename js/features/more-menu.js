@@ -83,12 +83,9 @@
         { id: 'location', iconClass: 'fas fa-location-dot', label: '位置', ready: false },
         { id: 'qa', iconClass: 'fas fa-comments', label: '快问快答', ready: false },
         { id: 'actions', iconClass: 'fas fa-hand-holding-heart', label: '动作', ready: false },
-        // 占位项，真正的面板在 js/features/habits.js 里，它加载后会调用
-        // registerItem('habits', ...) 把这项升级成真实功能
-        { id: 'habits', iconClass: 'fas fa-calendar-check', label: '习惯', ready: false },
-        // 占位项，真正的面板在 js/features/todos.js 里，它加载后会调用
-        // registerItem('todos', ...) 把这项升级成真实功能
-        { id: 'todos', iconClass: 'fas fa-list-check', label: '待办', ready: false }
+        // 「日常」= 习惯 + 待办 合并后的统一入口。真正的面板在 js/features/daily.js，
+        // 它加载后调用 registerItem('daily', ...) 把这项升级成真实功能
+        { id: 'daily', iconClass: 'fas fa-calendar-check', label: '日常', ready: false }
         // { id: 'xiaohongshu', iconClass: 'fas fa-book', label: '小红书', ready: false },
         // { id: 'douyin', iconClass: 'fab fa-tiktok', label: '抖音', ready: false }
     ];

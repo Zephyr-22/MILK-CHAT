@@ -1,6 +1,7 @@
 /* ============================================================
-   习惯打卡（Habit）
-   - 面板只做记录与统计（增删改 / 连续天数）；打卡在他提醒的那条气泡上
+   习惯打卡（Habit）—— 内容渲染进「日常」面板的习惯 tab
+   - 面板可增删改 / 连续天数，也能直接勾选打卡（与聊天气泡共用同一份 history）
+   - 完成打卡后的字卡反馈显示在「日常」面板里，不再发进聊天流
    - 打卡记录只存 history（日期串数组），连续天数与统计全部派生，不冗余存
    - 打卡只对当天有效：过了零点就封存，没打就是漏了，不许第二天补
    - 每天每个习惯最多：提醒一次 + 漏打卡补说一次；两者撞在同一时刻就合并成一句
@@ -11,6 +12,10 @@
     var STORE_KEY = 'milkchat_habit_v1';
     var store = { habits: [], remindLog: {}, missLog: {} };
     var editingId = null;
+
+    var CHECK_SVG = '<svg width="12" height="12" viewBox="0 0 12 12">' +
+        '<path d="M2 6.2L4.6 8.8L10 3.2" stroke="#fff" stroke-width="1.8" fill="none" ' +
+        'stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
     /* ---------- 日期 ---------- */
     function pad(n) { return n < 10 ? '0' + n : String(n); }
@@ -122,8 +127,8 @@
     }
 
     /* addMessage 是 core.js 顶层 const，全局词法作用域可见，这里直接调。
-       带 habitId 时发成 type:'habit'，气泡由 renderBubbleHTML 自己渲染（打卡按钮在那里面）；
-       不带就是普通消息——字卡那句走这条路，情话不该挂打卡按钮。 */
+       带 habitId 时发成 type:'habit' 的提醒气泡，由 renderBubbleHTML 自己渲染打卡按钮。
+       完成打卡后的字卡反馈已改走「日常」面板，不再经过这里。 */
     function say(text, habitId) {
         try {
             if (typeof addMessage !== 'function') return;
@@ -144,23 +149,15 @@
             if (typeof playSound === 'function') playSound('message');
         } catch (e) { console.warn('[habits] 发消息失败:', e); }
     }
-    /* 字卡节奏跟随聊天设置里的 replyDelayMin~Max，与他回一句话的时间感一致 */
-    function _cardDelay() {
-        var lo = 3000, hi = 7000;
-        try {
-            if (typeof settings !== 'undefined') {
-                lo = Number(settings.replyDelayMin) || 3000;
-                hi = Number(settings.replyDelayMax) || 7000;
-            }
-        } catch (e) {}
-        if (hi < lo) { var tmp = lo; lo = hi; hi = tmp; }
-        return lo + Math.random() * (hi - lo);
-    }
-    function sayCard(delay) {
+    /* 完成打卡的反馈：只在「日常」面板顶部显示一句，不再发进聊天流。
+       面板没打开时由 Daily.showFeedback 就地丢弃，不延迟、不响消息音、不排队。 */
+    function sayCard() {
         var pool = cardPool();
         if (!pool.length) return;
         var pick = fill(pool[Math.floor(Math.random() * pool.length)]);
-        setTimeout(function () { say(pick); }, delay);
+        if (window.Daily && typeof window.Daily.showFeedback === 'function') {
+            window.Daily.showFeedback(pick);
+        }
     }
 
     /* ---------- 结算 ---------- */
@@ -172,7 +169,10 @@
         try {
             var t = today();
             // 页面开着跨过零点：昨天遗留的「打卡」按钮作废，改显示「已错过」
-            if (lastSettleDay && lastSettleDay !== t) refreshAllBubbles();
+            if (lastSettleDay && lastSettleDay !== t) {
+                refreshAllBubbles();
+                renderPanelSafe();
+            }
             lastSettleDay = t;
             var changed = false;
             store.habits.forEach(function (h) {
@@ -285,7 +285,9 @@
         });
     }
 
-    function toggleFromBubble(habitId, day) {
+    /* 面板勾选与聊天气泡打卡共用这一个入口：改同一份 history，两个界面双向同步。
+       面板重渲只在「日常」的习惯 tab 开着时做，顺带把统计条一起刷新。 */
+    function toggleHabit(habitId, day) {
         var h = findHabit(habitId);
         if (!h) return;
         if (day !== today()) { toast('那天的已经结算了，只能打今天的'); return; }
@@ -295,8 +297,21 @@
         else h.history.push(day);
         save();
         updateBubbles(habitId, day);
+        renderPanelSafe();
         toast(wasDone ? '已撤销打卡' : '已打卡');
-        if (!wasDone) sayCard(_cardDelay());   // 打卡成功那一刻，他回一句
+        if (!wasDone) sayCard();       // 完成那一刻，在面板里回一句
+    }
+    function toggleFromBubble(habitId, day) { toggleHabit(habitId, day); }
+    function toggleFromPanel(habitId) { toggleHabit(habitId, today()); }
+
+    function renderPanelSafe() {
+        if (window.Daily && typeof window.Daily.isTabActive === 'function') {
+            if (window.Daily.isTabActive('habit')) render();
+            return;
+        }
+        // 兜底：外壳未加载时，按原来独立面板的 active 判断
+        var ov = el('mcHabitsOverlay');
+        if (ov && ov.classList.contains('active')) render();
     }
 
     function ensureDOM() {
@@ -350,10 +365,15 @@
 
         store.habits.forEach(function (h) {
             var st = streak(h);
+            var done = doneOn(h, t);
             html += '<div class="mc-habit-row' + (h.enabled ? '' : ' off') + '">' +
+                        '<div class="mc-habit-check' + (done ? ' done' : '') + '"' +
+                            ' data-act="toggle" data-id="' + esc(h.id) + '"' +
+                            ' role="checkbox" aria-checked="' + (done ? 'true' : 'false') + '"' +
+                            ' aria-label="今日打卡：' + esc(h.name) + '">' + CHECK_SVG + '</div>' +
                         '<div class="mc-habit-main">' +
                             '<div class="mc-habit-name">' + esc(h.name) +
-                                (doneOn(h, t) ? '<span class="mc-habit-done-tag">今日已打卡</span>' : '') +
+                                (done ? '<span class="mc-habit-done-tag">今日已打卡</span>' : '') +
                             '</div>' +
                             '<div class="mc-habit-meta">' + esc(h.time) +
                                 (st ? ' · 连续 <span class="streak">' + st + '</span> 天' : ' · 还没开始') +
@@ -382,7 +402,7 @@
                         '<button class="mc-habit-primary" data-act="save">' + (ed ? '保存' : '添加') + '</button>' +
                     '</div>' +
                 '</div>' +
-                '<div class="mc-habits-tip">这里只做记录和统计；打卡在他提醒的那条消息上点「打卡」。</div>';
+                '<div class="mc-habits-tip">勾选框 = 今日打卡，与聊天里他提醒的那条气泡同步；过了零点不能补。</div>';
 
         body.innerHTML = html;
     }
@@ -394,6 +414,10 @@
         var id = act.getAttribute('data-id');
         var h = id ? findHabit(id) : null;
 
+        if (a === 'toggle' && h) {
+            toggleFromPanel(h.id);
+            return;
+        }
         if (a === 'edit' && h) {
             editingId = id;
             render();
@@ -443,13 +467,22 @@
         }
     }
 
+    /* 统一由「日常」外壳开关；外壳未加载时退回原来的独立面板（兜底） */
     function openPanel() {
+        if (window.Daily && typeof window.Daily.openPanel === 'function') {
+            window.Daily.openPanel('habit');
+            return;
+        }
         ensureDOM();
         render();
         var ov = el('mcHabitsOverlay');
         if (ov) ov.classList.add('active');
     }
     function closePanel() {
+        if (window.Daily && typeof window.Daily.closePanel === 'function') {
+            window.Daily.closePanel();
+            return;
+        }
         var ov = el('mcHabitsOverlay');
         if (ov) ov.classList.remove('active');
     }
@@ -467,22 +500,18 @@
         openPanel: openPanel,
         closePanel: closePanel,
         settle: settle,
+        ensureDOM: ensureDOM,
+        render: render,
         renderBubbleHTML: renderBubbleHTML,
         toggleFromBubble: toggleFromBubble,
+        toggleFromPanel: toggleFromPanel,
         getHabits: function () { return store.habits; }
     };
 
+    /* 菜单项由 daily.js 统一注册为「日常」，这里不再单独占位 */
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function () {
-            boot();
-            if (window.MoreMenu && typeof window.MoreMenu.registerItem === 'function') {
-                window.MoreMenu.registerItem('habits', { ready: true, action: openPanel });
-            }
-        });
+        document.addEventListener('DOMContentLoaded', boot);
     } else {
         boot();
-        if (window.MoreMenu && typeof window.MoreMenu.registerItem === 'function') {
-            window.MoreMenu.registerItem('habits', { ready: true, action: openPanel });
-        }
     }
 })();

@@ -1,0 +1,184 @@
+/* ============================================================
+   日常（Daily）—— 习惯 + 待办 统一外壳
+   - 骨架与配色沿用 habits.css / todos.css / actions.css，自动跟随深浅色
+   - 两个模块的原面板 DOM 被搬进本外壳的 pane，这里把它们的自带壳去掉
+   - 新增：tab 条、面板内反馈区、习惯行的勾选框
+   ============================================================ */
+
+.mc-daily-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10050;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+    padding: 16px;
+    box-sizing: border-box;
+}
+.mc-daily-overlay.active {
+    display: flex;
+}
+
+.mc-daily-panel {
+    width: 100%;
+    max-width: 440px;
+    max-height: 82vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--secondary-bg, #fff);
+    border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+    border-radius: 18px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+    overflow: hidden;
+    animation: mcDailyPop 0.24s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+@keyframes mcDailyPop {
+    from { opacity: 0; transform: scale(0.94) translateY(10px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.mc-daily-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+    flex-shrink: 0;
+}
+.mc-daily-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary, #333);
+}
+.mc-daily-close {
+    border: none;
+    background: transparent;
+    font-size: 16px;
+    line-height: 1;
+    color: var(--text-secondary, #888);
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 8px;
+}
+.mc-daily-close:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+/* ---- tab 条 ---- */
+.mc-daily-tabs {
+    display: flex;
+    gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+    flex-shrink: 0;
+}
+.mc-daily-tab {
+    flex: 1;
+    padding: 7px 10px;
+    font-size: 13px;
+    line-height: 1.4;
+    border-radius: 10px;
+    border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
+    background: transparent;
+    color: var(--text-secondary, #888);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.mc-daily-tab.active {
+    background: var(--accent-color, #c5a47e);
+    border-color: var(--accent-color, #c5a47e);
+    color: #fff;
+}
+
+/* ---- 完成后的字卡反馈（只在面板里，不进聊天流）---- */
+.mc-daily-feedback {
+    margin: 10px 14px 0;
+    padding: 9px 12px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.03);
+    border-left: 2px solid var(--accent-color, #c5a47e);
+    flex-shrink: 0;
+}
+.mc-daily-feedback-label {
+    font-size: 11px;
+    color: var(--text-secondary, #888);
+    margin-bottom: 3px;
+}
+.mc-daily-feedback-text {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-primary, #333);
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+/* ---- 两个 tab 容器 ---- */
+.mc-daily-panes {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+.mc-daily-pane {
+    display: none;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+}
+.mc-daily-pane.active {
+    display: flex;
+}
+
+/* 搬进 pane 的原面板：去掉自带的壳，铺满容器，滚动交给各自的 body */
+.mc-daily-pane .mc-habits-panel,
+.mc-daily-pane .mc-todos-panel {
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    flex: 1;
+    min-height: 0;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    animation: none;
+    background: transparent;
+}
+.mc-daily-pane .mc-habits-head,
+.mc-daily-pane .mc-todos-head {
+    display: none;
+}
+
+/* ---- 习惯行新增勾选框（对齐 .mc-todo-check）---- */
+.mc-habit-check {
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    border: 1.5px solid var(--border-color, rgba(0, 0, 0, 0.3));
+    flex: 0 0 auto;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    background: transparent;
+    transition: background 0.15s, border-color 0.15s;
+}
+.mc-habit-check.done {
+    background: var(--accent-color, #c5a47e);
+    border-color: var(--accent-color, #c5a47e);
+}
+.mc-habit-check svg { display: none; }
+.mc-habit-check.done svg { display: block; }
+
+@media (max-width: 480px) {
+    .mc-daily-panel {
+        max-width: 100%;
+        max-height: 88vh;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mc-daily-panel { animation: none; }
+    .mc-daily-tab, .mc-habit-check { transition: none; }
+}

@@ -1,9 +1,10 @@
 /* ============================================================
-   待办清单（Todo）
+   待办清单（Todo）—— 内容渲染进「日常」面板的待办 tab
    - 每日只发一张「今日清单」消息（今天到期的 + 逾期顺延的，行内标「挂了 N 天」），一次提醒就够，不单独发明天/逾期气泡
    - 待办的「完成」是「事情做完了」，不绑定具体某天，所以勾选永远有效，随时可勾可撤销
    - 没做完的事顺延：date < 今天 且未完成 -> 显示「挂了 N 天」，他每天会提一句
    - 面板里分组展示（今日 / 7天内 / 逾期 / 以后 / 已完成），面板和气泡都能勾，改同一份数据
+   - 完成勾选后的字卡反馈显示在「日常」面板里，不再发进聊天流
    - 结算靠「打开时结算 + 每分钟巡检」，不需要后台；页面开着跨过午夜也能重新归队
    - 存储键 milkchat_todo_v1；前缀 milkchat_todo_ 已在云同步白名单挂号
    ============================================================ */
@@ -153,40 +154,15 @@
             .map(function (r) { return String(r || '').trim(); })
             .filter(Boolean);
     }
-    function say(text) {
-        try {
-            if (typeof addMessage !== 'function') return;
-            addMessage({
-                id: Date.now() + Math.random(),
-                sender: partnerName(),
-                text: text,
-                timestamp: new Date(),
-                status: 'received',
-                favorited: false,
-                note: null,
-                replyTo: null,
-                type: 'normal'
-            });
-            if (typeof playSound === 'function') playSound('message');
-        } catch (e) { console.warn('[todos] 发消息失败:', e); }
-    }
-    /* 字卡节奏跟随聊天设置里的 replyDelayMin~Max，与他回一句话的时间感一致 */
-    function _cardDelay() {
-        var lo = 3000, hi = 7000;
-        try {
-            if (typeof settings !== 'undefined') {
-                lo = Number(settings.replyDelayMin) || 3000;
-                hi = Number(settings.replyDelayMax) || 7000;
-            }
-        } catch (e) {}
-        if (hi < lo) { var tmp = lo; lo = hi; hi = tmp; }
-        return lo + Math.random() * (hi - lo);
-    }
-    function sayCard(delay) {
+    /* 完成勾选的反馈：只在「日常」面板顶部显示一句，不再发进聊天流。
+       面板没打开时由 Daily.showFeedback 就地丢弃，不延迟、不响消息音、不排队。 */
+    function sayCard() {
         var pool = cardPool();
         if (!pool.length) return;
         var pick = fill(pool[Math.floor(Math.random() * pool.length)]);
-        setTimeout(function () { say(pick); }, delay);
+        if (window.Daily && typeof window.Daily.showFeedback === 'function') {
+            window.Daily.showFeedback(pick);
+        }
     }
 
     /* ---------- 结算 ---------- */
@@ -301,7 +277,7 @@
         updateBubbles(id);
         if (typeof renderPanelSafe === 'function') renderPanelSafe();
         toast(t.done ? '已做完' : '已撤销');
-        if (!wasDone && t.done) sayCard(_cardDelay());   // 刚做完那刻，他回一句
+        if (!wasDone && t.done) sayCard();   // 刚做完那刻，在面板里回一句
     }
     function toggleFromBubble(id) { toggle(id); }
 
@@ -411,7 +387,13 @@
         body.innerHTML = html;
     }
     function renderPanelSafe() {
-        if (el('mcTodosOverlay') && el('mcTodosOverlay').classList.contains('active')) render();
+        if (window.Daily && typeof window.Daily.isTabActive === 'function') {
+            if (window.Daily.isTabActive('todo')) render();
+            return;
+        }
+        // 兜底：外壳未加载时，按原来独立面板的 active 判断
+        var ov = el('mcTodosOverlay');
+        if (ov && ov.classList.contains('active')) render();
     }
 
     function onBodyClick(e) {
@@ -474,13 +456,22 @@
         }
     }
 
+    /* 统一由「日常」外壳开关；外壳未加载时退回原来的独立面板（兜底） */
     function openPanel() {
+        if (window.Daily && typeof window.Daily.openPanel === 'function') {
+            window.Daily.openPanel('todo');
+            return;
+        }
         ensureDOM();
         render();
         var ov = el('mcTodosOverlay');
         if (ov) ov.classList.add('active');
     }
     function closePanel() {
+        if (window.Daily && typeof window.Daily.closePanel === 'function') {
+            window.Daily.closePanel();
+            return;
+        }
         var ov = el('mcTodosOverlay');
         if (ov) ov.classList.remove('active');
     }
@@ -496,22 +487,17 @@
         openPanel: openPanel,
         closePanel: closePanel,
         settle: settle,
+        ensureDOM: ensureDOM,
+        render: render,
         renderBubbleHTML: renderBubbleHTML,
         toggleFromBubble: toggleFromBubble,
         getTodos: function () { return store.todos; }
     };
 
+    /* 菜单项由 daily.js 统一注册为「日常」，这里不再单独占位 */
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function () {
-            boot();
-            if (window.MoreMenu && typeof window.MoreMenu.registerItem === 'function') {
-                window.MoreMenu.registerItem('todos', { ready: true, action: openPanel });
-            }
-        });
+        document.addEventListener('DOMContentLoaded', boot);
     } else {
         boot();
-        if (window.MoreMenu && typeof window.MoreMenu.registerItem === 'function') {
-            window.MoreMenu.registerItem('todos', { ready: true, action: openPanel });
-        }
     }
 })();
