@@ -2290,20 +2290,20 @@ function _makeOverlay() {
     return overlay;
 }
 
-// 「让他挑」：这批字卡不必全留。摇签分两步——先摇出这一次的慷慨程度（45%~72%，通常落在 50%~67%），
-// 再洗牌公平地取前 k 张。落选的那部分什么都不写进库，等于从未输入过：不建名单、不落盘、不留痕迹。
+// 「让他挑」：这批字卡不必全留。先摇出这一次的慷慨程度（中心 41.8%、上下 12 个百分点，
+// 两段均匀叠加成梯形：中间最密、两端稀疏），再让每张字卡各自独立地以这个概率被留下。
+// 于是留下条数会自然浮动（不再锁死为固定 k 条），小批量时可能一条不剩、也可能全留下。
+// 落选的那部分什么都不写进库，等于从未输入过：不建名单、不落盘、不留痕迹。
+const _RL_DRAW_CENTER = 0.418;   // 这一批的基准挑中概率
+const _RL_DRAW_SPREAD = 0.12;    // 上下浮动幅度（百分点），实际落在 29.8% ~ 53.8%
 let _drawChoiceMemory = false;
 function _drawSubset(lines) {
-    let p = 0.5 + Math.random() * 0.1667;
-    p += (Math.random() - 0.5) * 0.1;
-    p = Math.min(0.72, Math.max(0.45, p));
-    const k = Math.round(lines.length * p);
-    const pool = lines.slice();
-    for (let i = pool.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        const tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp;
-    }
-    return { kept: pool.slice(0, k), missed: lines.length - k };
+    const wide   = (Math.random() * 2 - 1) * (_RL_DRAW_SPREAD * 2 / 3); // ±8 个百分点
+    const jitter = (Math.random() * 2 - 1) * (_RL_DRAW_SPREAD / 3);     // ±4 个百分点
+    const p = _RL_DRAW_CENTER + wide + jitter;
+    // 每条字卡各自独立摇一次，彼此不相关；留下条数服从二项分布，不再预先锁定
+    const kept = lines.filter(() => Math.random() < p);
+    return { kept, missed: lines.length - kept.length };
 }
 
 // 「让他挑」的演出：结果在开演前就摇定了，先让他翻一会儿再公布，演完才写库。
