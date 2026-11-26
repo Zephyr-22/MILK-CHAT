@@ -262,6 +262,8 @@
         var keep = [];
         for (var i = 0; i < customActions.length; i++) {
             var a = customActions[i];
+            // 字卡转化来的动作没有内置对应物，不参与「同名内置副本」回收
+            if (a && a.fromCard) { keep.push(a); continue; }
             var match = null;
             for (var j = 0; j < DEFAULT_ACTIONS.length; j++) {
                 if (DEFAULT_ACTIONS[j].name === a.name) { match = DEFAULT_ACTIONS[j]; break; }
@@ -545,7 +547,8 @@
        由他自己的主动性驱动（心跳 33% / 回你时，pickReplyAction 用 desc）。 */
     function sendAction(id) {
         var a = findAction(id);
-        if (!a) return;
+        // 字卡转化来的只有他视角 desc，不能作为「我做的动作」发出去
+        if (!a || a.fromCard) return;
         var text = fill(a.meDesc || a.desc);
 
         closePanel();
@@ -599,6 +602,7 @@
             case 'hide':     hideAction(act.getAttribute('data-id')); break;
             case 'show':     showAction(act.getAttribute('data-id')); break;
             case 'reset-one': resetBuiltin(act.getAttribute('data-id')); break;
+            case 'restore-card': restoreCard(act.getAttribute('data-id')); render(); break;
         }
     }
 
@@ -620,6 +624,14 @@
             '</div>';
     }
 
+    /* C 组（字卡转化来的他视角动作）：纯文字一行，不绘制图标。
+       刻意不带 data-id —— onBodyClick 靠它触发 sendAction，缺了就只展示、不能点发送。 */
+    function cardItemHtml(a) {
+        return '<div class="mc-action-item mc-action-card-item">' +
+            '<span class="mc-card-text">' + esc(fill(a.desc || a.name)) + '</span>' +
+            '</div>';
+    }
+
     /* 单行（管理列表） */
     function listItemHtml(a) {
         var builtin = isBuiltin(a.id);
@@ -628,9 +640,13 @@
         var tags = '';
         if (hidden) tags += '<span class="mc-tag off">已隐藏</span>';
         if (edited) tags += '<span class="mc-tag">已改</span>';
+        if (a.fromCard) tags += '<span class="mc-tag">字卡转化</span>';
         var badge = a.group === 'B' ? 'b' : (a.group === 'A' ? 'a' : 'c');
         var badgeText = a.group === 'B' ? 'B' : (a.group === 'A' ? 'A' : '·');
-        var ops = '<button type="button" class="mc-mini-btn" data-act="edit" data-id="' + esc(a.id) + '">编辑</button>';
+        // 字卡转化来的不给「编辑」：避免 desc 被改后与 srcText（还原用）不一致
+        var ops = (builtin || !a.fromCard)
+            ? '<button type="button" class="mc-mini-btn" data-act="edit" data-id="' + esc(a.id) + '">编辑</button>'
+            : '';
         if (builtin) {
             ops += hidden
                 ? '<button type="button" class="mc-mini-btn" data-act="show" data-id="' + esc(a.id) + '">显示</button>'
@@ -639,12 +655,15 @@
                 ops += '<button type="button" class="mc-mini-btn" data-act="reset-one" data-id="' + esc(a.id) + '">还原</button>';
             }
         } else {
+            if (a.fromCard) {
+                ops += '<button type="button" class="mc-mini-btn" data-act="restore-card" data-id="' + esc(a.id) + '">还原为字卡</button>';
+            }
             ops += '<button type="button" class="mc-mini-btn danger" data-act="del" data-id="' + esc(a.id) + '">删除</button>';
         }
         return '<div class="mc-list-item' + (hidden ? ' is-hidden' : '') + '">' +
             '<div class="mc-list-main">' +
                 '<div class="mc-list-name"><span class="mc-group-badge ' + badge + '">' + badgeText + '</span> ' +
-                    esc(a.icon || '💫') + ' ' + esc(a.name) + tags + '</div>' +
+                    (a.fromCard ? '' : esc(a.icon || '💫') + ' ') + esc(a.name) + tags + '</div>' +
                 '<div class="mc-list-desc">他：' + esc(fill(a.desc)) + '</div>' +
                 (a.meDesc ? '<div class="mc-list-desc">我：' + esc(fill(a.meDesc)) + '</div>' : '') +
             '</div>' +
@@ -672,15 +691,22 @@
             return '<button type="button" class="mc-mini-btn mc-tab' + (currentGroup === k ? ' active' : '') +
                 '" data-act="tab" data-group="' + k + '">' + esc(meta.label) + '</button>';
         };
-        var items = (g[currentGroup] || []).map(gridItemHtml).join('');
+        // 逐条按 fromCard 分流，不一刀切：老自定义动作（有图标 / meDesc）仍可点
+        var items = (g[currentGroup] || []).map(function (a) {
+            return a.fromCard ? cardItemHtml(a) : gridItemHtml(a);
+        }).join('');
+        var isCardView = currentGroup === 'C';
+        var hint = isCardView
+            ? '由字卡转化，只由' + esc(partnerName()) + '主动做出；删除或还原请到「⚙️ 管理」'
+            : '点一个动作，' + esc(partnerName()) + '会回应你';
         body.innerHTML =
             '<div class="mc-mode-row mc-tabs">' +
-                tabBtn('A') + tabBtn('B') +
+                tabBtn('A') + tabBtn('B') + tabBtn('C') +
                 '<span class="mc-tab-spacer"></span>' +
                 '<button type="button" class="mc-mini-btn" data-act="manage">⚙️ 管理</button>' +
             '</div>' +
-            '<div class="mc-actions-grid">' + items + '</div>' +
-            '<div class="mc-hint">点一个动作，' + esc(partnerName()) + '会回应你</div>';
+            '<div class="mc-actions-grid' + (isCardView ? ' mc-actions-grid-c' : '') + '">' + items + '</div>' +
+            '<div class="mc-hint">' + hint + '</div>';
     }
 
     function renderList(body) {
@@ -834,6 +860,55 @@
         if (ov) ov.classList.remove('active');
     }
 
+    /* ---------- 字卡转化（他视角动作）----------
+       转化来的动作只有 desc，不写 meDesc、不绘制图标、不进「你点动作」的发送路径。
+       fromCard 把它们和手工添加的自定义动作区分开；srcText 保留原字卡，供「还原为字卡」。 */
+    function convertFromCard(text) {
+        var t = String(text || '').trim();
+        if (!t) return false;
+        for (var i = 0; i < customActions.length; i++) {
+            if (customActions[i] && customActions[i].fromCard && customActions[i].desc === t) return 'exists';
+        }
+        customActions.push({
+            id: 'ca_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+            name: t.length > 12 ? t.slice(0, 12) + '…' : t,
+            icon: '',
+            type: 'other',
+            group: 'C',
+            desc: t,
+            srcText: t,
+            fromCard: true
+        });
+        saveStore();
+        persist();
+        return true;
+    }
+
+    /* 退回主字卡池：内容不丢，只是身份换回去（分组归属 / 屏蔽状态不还原） */
+    function restoreCard(id) {
+        var idx = -1;
+        for (var i = 0; i < customActions.length; i++) {
+            if (customActions[i].id === id) { idx = i; break; }
+        }
+        if (idx < 0 || !customActions[idx].fromCard) return false;
+        var text = String(customActions[idx].srcText || customActions[idx].desc || '').trim();
+        if (!text) return false;
+        var ok = false;
+        if (typeof window._replyLibraryRestoreCard === 'function') {
+            try { ok = window._replyLibraryRestoreCard(text) !== false; } catch (e) { ok = false; }
+        } else if (typeof customReplies !== 'undefined' && customReplies) {
+            if (customReplies.indexOf(text) === -1) customReplies.push(text);
+            if (typeof throttledSaveData === 'function') throttledSaveData();
+            ok = true;
+        }
+        if (!ok) { toast('回复库未就绪，还原失败'); return false; }
+        customActions.splice(idx, 1);
+        saveStore();
+        persist();
+        toast('已还原为字卡');
+        return true;
+    }
+
     loadStore();
 
     window.Actions = {
@@ -841,6 +916,7 @@
         closePanel: closePanel,
         sendAction: sendAction,
         fireProactiveAction: fireProactiveAction,
+        convertFromCard: convertFromCard,
         getActions: function () { return allActions(); }
     };
 

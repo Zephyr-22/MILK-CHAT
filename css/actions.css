@@ -162,6 +162,32 @@
     text-align: center;
 }
 
+/* ---- C 组：字卡转化来的他视角动作（纯文字、不可点） ---- */
+.mc-actions-grid.mc-actions-grid-c {
+    grid-template-columns: 1fr;
+}
+.mc-action-card-item {
+    align-items: flex-start;
+    justify-content: flex-start;
+    min-height: 0;
+    padding: 10px 12px;
+    cursor: default;
+    text-align: left;
+}
+.mc-action-card-item:hover {
+    border-color: var(--border-color, rgba(0, 0, 0, 0.08));
+    transform: none;
+}
+.mc-action-card-item:active {
+    transform: none;
+}
+.mc-card-text {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-primary, #333);
+    word-break: break-word;
+}
+
 /* ---- A/B 分组标题与角标 ---- */
 .mc-group-head {
     display: flex;

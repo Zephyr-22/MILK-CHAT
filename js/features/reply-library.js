@@ -928,6 +928,7 @@ function _createCard(item, index, disabledSet) {
             ${groupBadge}
         </div>
         <div class="rl-card-actions">
+            ${_canConvertToAction() ? `<button class="rl-act-btn" data-action="to-action" title="转为他视角动作">${ICONS.magic}</button>` : ''}
             <button class="rl-act-btn ${isDisabled ? 'active' : ''}" data-action="disable" title="${isDisabled ? '启用' : '屏蔽'}">
                 ${isDisabled ? ICONS.eye : ICONS.eyeOff}
             </button>
@@ -943,6 +944,8 @@ function _createCard(item, index, disabledSet) {
         </div>
     `;
 
+    const toActBtn = div.querySelector('[data-action="to-action"]');
+    if (toActBtn) toActBtn.onclick = (e) => { e.stopPropagation(); convertCardToAction(index, item); };
     div.querySelector('[data-action="delete"]').onclick = (e) => { e.stopPropagation(); deleteItem(index); };
     div.querySelector('[data-action="edit"]').onclick = (e) => { e.stopPropagation(); editItem(index, item); };
     div.querySelector('[data-action="disable"]').onclick = (e) => { e.stopPropagation(); _toggleItemDisable(item); };
@@ -1632,6 +1635,52 @@ function _showBatchGroupPicker() {
         showNotification(`✓ 已为 ${selectedItems.length} 条内容分组`, 'success');
     };
 }
+
+/* 「转为他视角动作」只在「回复库 · 主字卡」tab 出现，避免拍一拍 / 状态等 tab 误触 */
+function _canConvertToAction() {
+    return currentMajorTab === 'reply' && currentSubTab === 'custom';
+}
+
+/* 字卡 → 动作：先让动作模块登记原文，成功后才从字卡池移除。
+   删除时连带清分组引用（存的是字符串不是索引）和屏蔽集合，避免留下孤儿记录。 */
+function convertCardToAction(index, item) {
+    if (!_canConvertToAction()) return;
+    if (typeof window.Actions !== 'object' || typeof window.Actions.convertFromCard !== 'function') {
+        showNotification('动作模块未就绪，请稍后再试', 'error'); return;
+    }
+    const text = String(item || '').trim();
+    if (!text) return;
+    const r = window.Actions.convertFromCard(text);
+    if (r === 'exists') { showNotification('这条字卡已经转为动作了', 'info'); return; }
+    if (r !== true) { showNotification('转化失败，字卡未改动', 'error'); return; }
+
+    if (customReplies[index] === item) customReplies.splice(index, 1);
+    else {
+        const i = customReplies.indexOf(item);
+        if (i >= 0) customReplies.splice(i, 1);
+    }
+    if (window.customReplyGroups) {
+        window.customReplyGroups.forEach(g => {
+            if (g.items) g.items = g.items.filter(t => t !== item);
+        });
+    }
+    const dis = _getDisabledItemsSet();
+    if (dis.has(item)) { dis.delete(item); _saveDisabledItemsSet(dis); }
+
+    throttledSaveData();
+    renderReplyLibrary();
+    showNotification('已转为他视角动作，字卡已从回复库移出', 'success');
+}
+
+/* 供动作模块「还原为字卡」回调：把原文放回主字卡池（分组归属 / 屏蔽状态不还原） */
+window._replyLibraryRestoreCard = function (text) {
+    const t = String(text || '').trim();
+    if (!t) return false;
+    if (customReplies.indexOf(t) === -1) customReplies.push(t);
+    throttledSaveData();
+    renderReplyLibrary();
+    return true;
+};
 
 function deleteItem(index) {
     if (!confirm('确定删除吗？')) return;
