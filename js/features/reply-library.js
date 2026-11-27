@@ -876,6 +876,7 @@ function _createCard(item, index, disabledSet) {
     const div = document.createElement('div');
     div.className = 'rl-card';
     const isDisabled = disabledSet && disabledSet.has(item);
+    const isConverted = _isConvertedCard(item);
     const isSelected = _batchSelectedIndices.has(index);
 
     const groupBadge = (() => {
@@ -894,10 +895,26 @@ function _createCard(item, index, disabledSet) {
         </span>`;
     })();
 
+    /* 已转动作：变灰但不用删除线（字卡还在，只是停用），挂一个可辨识的小标签 */
+    const convertedBadge = isConverted
+        ? `<span style="
+            display:inline-flex;align-items:center;
+            padding:1px 7px;border-radius:10px;font-size:10px;
+            background:var(--primary-bg, rgba(0,0,0,0.04));
+            color:var(--text-secondary, #888);
+            border:1px solid var(--border-color, rgba(0,0,0,0.1));
+            margin-top:5px;margin-left:4px;
+        ">已转动作</span>`
+        : '';
+
     const itemParts = item.split('|');
     const displayText = itemParts.length > 1
         ? `<span style="font-size:13px;">${itemParts[0]}</span><span style="font-size:11px;opacity:0.6;display:block;margin-top:1px;">${itemParts[1]}</span>`
         : `<span style="font-size:13px;">${item}</span>`;
+
+    // 普通屏蔽：删除线 + 0.4；已转动作：只变灰 0.45，保留文字可读
+    const dimStyle = isConverted ? 'opacity:0.45;'
+        : (isDisabled ? 'opacity:0.4;text-decoration:line-through;' : '');
 
     if (_batchModeActive) {
         div.style.cssText = 'cursor:pointer;';
@@ -909,9 +926,10 @@ function _createCard(item, index, disabledSet) {
             ">
                 ${isSelected ? `<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="white" stroke-width="1.5" stroke-linecap="round"/></svg>` : ''}
             </div>
-            <div style="flex:1;min-width:0;${isDisabled ? 'opacity:0.4;' : ''}">
+            <div style="flex:1;min-width:0;${dimStyle}">
                 ${displayText}
                 ${groupBadge}
+                ${convertedBadge}
             </div>
         `;
         div.addEventListener('click', () => {
@@ -923,13 +941,14 @@ function _createCard(item, index, disabledSet) {
     }
 
     div.innerHTML = `
-        <div style="flex:1;min-width:0;${isDisabled ? 'opacity:0.4;text-decoration:line-through;' : ''}">
+        <div style="flex:1;min-width:0;${dimStyle}">
             ${displayText}
             ${groupBadge}
+            ${convertedBadge}
         </div>
         <div class="rl-card-actions">
-            ${_canConvertToAction() ? `<button class="rl-act-btn" data-action="to-action" title="转为他视角动作">${ICONS.magic}</button>` : ''}
-            <button class="rl-act-btn ${isDisabled ? 'active' : ''}" data-action="disable" title="${isDisabled ? '启用' : '屏蔽'}">
+            ${_canConvertToAction() && !isConverted ? `<button class="rl-act-btn" data-action="to-action" title="转为他视角动作">${ICONS.magic}</button>` : ''}
+            <button class="rl-act-btn ${isDisabled ? 'active' : ''}" data-action="disable" title="${isConverted ? '已转为动作，恢复请到动作面板「还原为字卡」' : (isDisabled ? '启用' : '屏蔽')}">
                 ${isDisabled ? ICONS.eye : ICONS.eyeOff}
             </button>
             <button class="rl-act-btn" data-action="tag" title="分组">
@@ -945,10 +964,20 @@ function _createCard(item, index, disabledSet) {
     `;
 
     const toActBtn = div.querySelector('[data-action="to-action"]');
-    if (toActBtn) toActBtn.onclick = (e) => { e.stopPropagation(); convertCardToAction(index, item); };
+    if (toActBtn) toActBtn.onclick = (e) => { e.stopPropagation(); convertCardToAction(item); };
     div.querySelector('[data-action="delete"]').onclick = (e) => { e.stopPropagation(); deleteItem(index); };
-    div.querySelector('[data-action="edit"]').onclick = (e) => { e.stopPropagation(); editItem(index, item); };
-    div.querySelector('[data-action="disable"]').onclick = (e) => { e.stopPropagation(); _toggleItemDisable(item); };
+    div.querySelector('[data-action="edit"]').onclick = (e) => {
+        e.stopPropagation();
+        // 改文字会让 disabledReplyItems 里的旧文本失效，且与动作里的 srcText 不一致
+        if (isConverted) { showNotification('这条已转为动作，改文字请先在动作面板「还原为字卡」', 'info'); return; }
+        editItem(index, item);
+    };
+    div.querySelector('[data-action="disable"]').onclick = (e) => {
+        e.stopPropagation();
+        // 不允许单独「启用」：否则会同时进字卡池和动作池，同一句重复出现
+        if (isConverted) { showNotification('这条已转为动作，恢复请到动作面板点「还原为字卡」', 'info'); return; }
+        _toggleItemDisable(item);
+    };
     div.querySelector('[data-action="tag"]').onclick = (e) => { e.stopPropagation(); _showSingleItemGroupPicker(item, _getGroupCtx()); };
 
     return div;
@@ -1641,9 +1670,22 @@ function _canConvertToAction() {
     return currentMajorTab === 'reply' && currentSubTab === 'custom';
 }
 
-/* 字卡 → 动作：先让动作模块登记原文，成功后才从字卡池移除。
-   删除时连带清分组引用（存的是字符串不是索引）和屏蔽集合，避免留下孤儿记录。 */
-function convertCardToAction(index, item) {
+/* 该字卡是否已转为「他视角」动作 —— 从动作模块的 fromCard 记录派生，零新增存储。
+   动作被删除 / 还原后标记自动消失，天然与 C 组保持一致。 */
+function _isConvertedCard(text) {
+    try {
+        if (window.Actions && typeof window.Actions.getConvertedCards === 'function') {
+            return window.Actions.getConvertedCards().indexOf(String(text || '').trim()) !== -1;
+        }
+    } catch (e) {}
+    return false;
+}
+
+/* 字卡 → 动作：字卡**保留在字卡界面**，只加入屏蔽集合变灰停用。
+   复用 disabledReplyItems 是刻意的：它是各回复消费点共同遵守的停用协议，
+   这样已转动作的字卡不会进 replyPoolOnce / 拼接 / 动作序列里的话 / 习惯 / 待办等，
+   避免同一句既被「说」又被「做」。分组引用一并保留，还原后归属还在。 */
+function convertCardToAction(item) {
     if (!_canConvertToAction()) return;
     if (typeof window.Actions !== 'object' || typeof window.Actions.convertFromCard !== 'function') {
         showNotification('动作模块未就绪，请稍后再试', 'error'); return;
@@ -1654,29 +1696,23 @@ function convertCardToAction(index, item) {
     if (r === 'exists') { showNotification('这条字卡已经转为动作了', 'info'); return; }
     if (r !== true) { showNotification('转化失败，字卡未改动', 'error'); return; }
 
-    if (customReplies[index] === item) customReplies.splice(index, 1);
-    else {
-        const i = customReplies.indexOf(item);
-        if (i >= 0) customReplies.splice(i, 1);
-    }
-    if (window.customReplyGroups) {
-        window.customReplyGroups.forEach(g => {
-            if (g.items) g.items = g.items.filter(t => t !== item);
-        });
-    }
     const dis = _getDisabledItemsSet();
-    if (dis.has(item)) { dis.delete(item); _saveDisabledItemsSet(dis); }
+    dis.add(text);
+    _saveDisabledItemsSet(dis);
 
     throttledSaveData();
     renderReplyLibrary();
-    showNotification('已转为他视角动作，字卡已从回复库移出', 'success');
+    showNotification('已转为他视角动作；字卡保留但已停用（变灰）', 'success');
 }
 
-/* 供动作模块「还原为字卡」回调：把原文放回主字卡池（分组归属 / 屏蔽状态不还原） */
+/* 供动作模块「还原为字卡」回调：解除停用，让字卡重新可用。
+   字卡本就还在 customReplies 里；仅当用户手动删过它时才补回。 */
 window._replyLibraryRestoreCard = function (text) {
     const t = String(text || '').trim();
     if (!t) return false;
     if (customReplies.indexOf(t) === -1) customReplies.push(t);
+    const dis = _getDisabledItemsSet();
+    if (dis.has(t)) { dis.delete(t); _saveDisabledItemsSet(dis); }
     throttledSaveData();
     renderReplyLibrary();
     return true;

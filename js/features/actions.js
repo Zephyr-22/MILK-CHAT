@@ -917,6 +917,18 @@
         sendAction: sendAction,
         fireProactiveAction: fireProactiveAction,
         convertFromCard: convertFromCard,
+        /* 回复库用来标「这条字卡已转动作」：从 fromCard 记录派生，不另存新键 */
+        getConvertedCards: function () {
+            var out = [];
+            for (var i = 0; i < customActions.length; i++) {
+                var a = customActions[i];
+                if (a && a.fromCard) {
+                    var t = String(a.srcText || a.desc || '').trim();
+                    if (t) out.push(t);
+                }
+            }
+            return out;
+        },
         getActions: function () { return allActions(); }
     };
 
