@@ -460,8 +460,8 @@
             fileInput.onchange = function () {
                 var file = fileInput.files && fileInput.files[0];
                 if (!file) return;
-                if (file.size > 2 * 1024 * 1024) {
-                    showNotification && showNotification('图片不能超过2MB', 'error');
+                if (file.size > 15 * 1024 * 1024) {
+                    showNotification && showNotification('图片不能超过15MB', 'error');
                     fileInput.value = '';
                     return;
                 }
